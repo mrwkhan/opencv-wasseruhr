@@ -42,6 +42,7 @@ class Konfig:
     # Kamera-Entität für "Kamera jetzt ablesen" über die Home-Assistant-API
     kamera: str | None = None
     ha_url: str = "http://supervisor/core/api"
+    supervisor_url: str = "http://supervisor"  # nur im Add-on: eigene Optionen setzen, neu starten
     ha_token: str | None = field(default=None, repr=False)
     # Verwaltung (/admin) nur über HA-Ingress, d. h. nur für angemeldete HA-Benutzer
     admin_nur_ingress: bool = False
@@ -92,6 +93,7 @@ class Konfig:
             modell_verzeichnis=Path(env["MODELL_DIR"]) if (env.get("MODELL_DIR") or "").strip() else None,
             kamera=(env.get("KAMERA") or "").strip() or None,
             ha_url=(env.get("HA_URL") or "").strip() or "http://supervisor/core/api",
+            supervisor_url=(env.get("SUPERVISOR_URL") or "").strip() or "http://supervisor",
             ha_token=(env.get("HA_TOKEN") or env.get("SUPERVISOR_TOKEN") or "").strip() or None,
             admin_nur_ingress=_parse_schalter(env, "ADMIN_NUR_INGRESS", False),
             ist_addon=bool((env.get("SUPERVISOR_TOKEN") or "").strip()),

@@ -98,7 +98,7 @@ async function ladeInfo() {
   $("#kamera").hidden = !info.kamera_bereit;
   $("#kamera-hinweis").textContent = info.kamera_bereit ? "" : info.kamera
     ? `Kamera ${info.kamera} ist eingestellt, aber es gibt keinen Zugang zu Home Assistant (HA_URL/HA_TOKEN).`
-    : "Tipp: Mit eingestellter Kamera-Entität (Option kamera) gibt es hier „Kamera jetzt ablesen“.";
+    : "Tipp: Oben bei Automatik eine Kamera auswählen, dann gibt es hier „Kamera jetzt ablesen“.";
 
   const s = info.einstellungen;
   const zeilen = [
@@ -114,6 +114,7 @@ async function ladeInfo() {
     ["ROIs", el("code", {text: JSON.stringify(s.ROIS)})],
   ];
   zeigeAutomatik(info.automatik);
+  ladeKameras();
   $("#einstellungen").replaceChildren(...zeilen.flatMap(([k, v]) => [el("dt", {text: k}), el("dd", {}, typeof v === "object" ? v : String(v))]));
   $("#einstellungen-hinweis").textContent = info.addon
     ? "Ändern unter Einstellungen → Add-ons → Wasseruhr-CV → Konfiguration. Beim Speichern startet das Add-on neu."
@@ -126,7 +127,7 @@ function zeigeAutomatik(a) {
   const helfer = a.input_number ? a.input_number + (a.input_number_fehlt ? " – gibt es in Home Assistant nicht!" : "") : null;
   const ziele = [a.sensor, helfer].filter(Boolean).join(", ") || "keine – nur Anzeige hier";
   const zeilen = [
-    ["Status", a.aktiv ? `liest alle ${a.intervall_minuten} min ab` : (a.intervall_minuten === 0 ? "aus (Intervall 0)" : "aus – Kamera in der Konfiguration eintragen")],
+    ["Status", a.aktiv ? `liest alle ${a.intervall_minuten} min ab` : (a.intervall_minuten === 0 ? "aus (Intervall 0)" : !a.kamera ? "aus – unten eine Kamera auswählen" : "aus – kein Zugang zu Home Assistant")],
     ["Kamera", a.kamera || "–"],
     ["Schreibt nach", ziele],
     ["Zählerstand", a.zaehlerstand == null ? "noch keiner" : `${m3(a.zaehlerstand)} m³ (bestätigt ${zeit(a.zaehlerstand_zeit)})`],
@@ -136,6 +137,47 @@ function zeigeAutomatik(a) {
   $("#automatik").replaceChildren(...zeilen.flatMap(([k, v]) => [el("dt", {text: k}), el("dd", {text: v})]));
   $("#jetzt").hidden = !a.kamera;
 }
+let kameraGeladen = false;
+async function ladeKameras() {
+  if (kameraGeladen || !info || !info.kamera_bereit && !info.ha_zugang) return;
+  kameraGeladen = true;
+  let d;
+  try { d = await api("admin/kameras"); }
+  catch (e) { melden("m-automatik", "Kameras nicht abrufbar: " + e.message, "schlecht"); return; }
+  const liste = $("#kamera-liste");
+  liste.replaceChildren(
+    el("option", {value: "", text: d.kameras.length ? "– Kamera wählen –" : "keine Kamera in Home Assistant gefunden"}),
+    ...d.kameras.map(k => el("option", {value: k.entity_id, selected: k.entity_id === d.aktuell,
+      text: `${k.name} (${k.entity_id})${k.state === "unavailable" ? " – nicht verfügbar" : ""}`})));
+  $("#kamera-wahl").hidden = false;
+  $("#kamera-wahl").dataset.speichern = d.speichern_moeglich ? "1" : "";
+  if (d.aktuell) zeigeVorschau(d.aktuell);
+}
+function zeigeVorschau(entity) {
+  const bild = $("#kamera-vorschau");
+  if (!entity) { bild.hidden = true; return; }
+  bild.onerror = () => { bild.hidden = true; melden("m-automatik", `Kein Bild von ${entity} – ist die Kamera online?`, "schlecht"); };
+  bild.onload = () => { bild.hidden = false; };
+  bild.src = `admin/kameras/${encodeURIComponent(entity)}/bild?t=${Date.now()}`;
+}
+$("#kamera-liste").addEventListener("change", (ev) => zeigeVorschau(ev.currentTarget.value));
+$("#kamera-wahl").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const f = ev.currentTarget, knopf = f.querySelector("button"), entity = f.kamera.value;
+  if (!entity) { melden("m-automatik", "Bitte eine Kamera wählen.", "schlecht"); return; }
+  if (!f.dataset.speichern) { melden("m-automatik", `Außerhalb des Add-ons bitte die Variable KAMERA=${entity} setzen.`, "schlecht"); return; }
+  knopf.disabled = true; melden("m-automatik", "Speichere und starte das Add-on neu …");
+  try {
+    await api(`admin/kamera?entity_id=${encodeURIComponent(entity)}`, {method: "POST"});
+    await new Promise(r => setTimeout(r, 4000));
+    for (let i = 0; i < 45; i++) {  // warten, bis das Add-on wieder antwortet
+      try { const neu = await api("admin/info"); if (neu.kamera === entity) { location.reload(); return; } } catch (_) {}
+      await new Promise(r => setTimeout(r, 2000));
+    }
+    melden("m-automatik", "Gespeichert. Das Add-on startet noch – Seite gleich neu laden.", "gut");
+  } catch (e) { melden("m-automatik", "Fehler: " + e.message, "schlecht"); knopf.disabled = false; }
+});
+
 $("#jetzt").addEventListener("click", async (ev) => {
   const knopf = ev.currentTarget;
   knopf.disabled = true; melden("m-automatik", "Lese ab und prüfe …");
@@ -348,6 +390,12 @@ _HTML = """<!doctype html>
     <p class="leise">Liest das Kamerabild regelmäßig ab und schreibt nur sichere, plausible Werte nach
       Home Assistant: nur vorwärts, höchstens so schnell, wie Wasser fließen kann.</p>
     <dl class="einstellungen" id="automatik"></dl>
+    <form id="kamera-wahl" autocomplete="off" hidden>
+      <label for="kamera-liste">Kamera auswählen – das Vorschaubild zeigt, ob es die richtige ist</label>
+      <select id="kamera-liste" name="kamera"></select>
+      <button type="submit">Übernehmen</button>
+    </form>
+    <img id="kamera-vorschau" class="bild" alt="Vorschau der gewählten Kamera" hidden>
     <div class="zeile"><button type="button" id="jetzt" hidden>Jetzt ablesen &amp; übertragen</button></div>
     <form id="zaehlerstand" autocomplete="off">
       <label>Zählerstand von Hand setzen, z. B. nach einem Zählertausch oder wenn dauerhaft „kleiner als der bisherige Stand“ gemeldet wird</label>

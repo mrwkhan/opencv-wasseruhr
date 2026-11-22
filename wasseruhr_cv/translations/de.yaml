@@ -3,7 +3,8 @@ configuration:
     name: Kamera
     description: >-
       Kamera-Entität, deren Bild abgelesen wird, z. B. camera.wasseruhr.
-      Ohne Kamera gibt es keine automatische Ablesung.
+      Bequemer: in der Seitenleiste unter Wasseruhr → Verwaltung aus einer
+      Liste mit Vorschaubild auswählen. Ohne Kamera keine automatische Ablesung.
   intervall_minuten:
     name: Intervall (Minuten)
     description: >-

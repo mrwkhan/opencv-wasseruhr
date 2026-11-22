@@ -152,7 +152,7 @@ def rendern(
             f"Die Automatik liest gleich und danach alle {automatik_intervall} Minuten ab – "
             "oder sofort mit <b>Kamera jetzt ablesen</b>." if automatik_intervall
             else "Mit <b>Kamera jetzt ablesen</b> holt sich der Dienst selbst ein Bild." if kamera
-            else "Für die automatische Ablesung in der Konfiguration die Kamera eintragen."
+            else 'Für die automatische Ablesung zuerst in der <a href="admin">Verwaltung</a> die Kamera auswählen.'
         )
         inhalt = (
             f'<div class="karte"><p>Noch kein Bild abgelesen. {hinweis}</p>'

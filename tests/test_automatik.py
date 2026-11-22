@@ -70,6 +70,10 @@ class FakeHA:
         self.dienste: list[tuple[str, dict]] = []
         self.anfragen: list[str] = []
         self.fehler_bei_states = False
+        self.kameras = {"camera.wasseruhr": "Wasseruhr", "camera.garten": "Garten"}
+        self.optionen = {"intervall_minuten": 5, "sensor": "sensor.wasseruhr_cv_zaehlerstand", "http": False}
+        self.optionen_fehler = None
+        self.neustarts = 0
         ha = self
 
         class H(BaseHTTPRequestHandler):
@@ -83,8 +87,14 @@ class FakeHA:
                 ha.anfragen.append(f"GET {self.path}")
                 if self.headers.get("Authorization") != "Bearer geheim":
                     return self._antwort(401)
-                if self.path == "/core/api/camera_proxy/camera.wasseruhr":
+                if self.path in ("/core/api/camera_proxy/camera.wasseruhr", "/core/api/camera_proxy/camera.garten"):
                     return self._antwort(ha.kamera_status, ha.bild if ha.kamera_status == 200 else b"", "image/png")
+                if self.path == "/core/api/states":
+                    alle = [{"entity_id": e, **z} for e, z in ha.zustaende.items()]
+                    alle += [{"entity_id": e, "state": "idle", "attributes": {"friendly_name": n}} for e, n in ha.kameras.items()]
+                    return self._antwort(200, json.dumps(alle).encode())
+                if self.path == "/addons/self/info":
+                    return self._antwort(200, json.dumps({"result": "ok", "data": {"options": ha.optionen}}).encode())
                 if self.path.startswith("/core/api/states/"):
                     z = ha.zustaende.get(self.path.rsplit("/", 1)[1])
                     return self._antwort(200, json.dumps(z).encode()) if z else self._antwort(404)
@@ -94,7 +104,16 @@ class FakeHA:
                 ha.anfragen.append(f"POST {self.path}")
                 if self.headers.get("Authorization") != "Bearer geheim":
                     return self._antwort(401)
-                daten = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                laenge = int(self.headers.get("Content-Length") or 0)
+                daten = json.loads(self.rfile.read(laenge)) if laenge else {}
+                if self.path == "/addons/self/options":
+                    if ha.optionen_fehler:
+                        return self._antwort(400, json.dumps({"result": "error", "message": ha.optionen_fehler}).encode())
+                    ha.optionen = daten["options"]
+                    return self._antwort(200, b'{"result": "ok", "data": {}}')
+                if self.path == "/addons/self/restart":
+                    ha.neustarts += 1
+                    return self._antwort(200, b'{"result": "ok", "data": {}}')
                 if self.path.startswith("/core/api/states/"):
                     if ha.fehler_bei_states:
                         return self._antwort(500)
@@ -111,7 +130,8 @@ class FakeHA:
 
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), H)
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
-        self.url = f"http://127.0.0.1:{self.server.server_port}/core/api"
+        self.basis = f"http://127.0.0.1:{self.server.server_port}"
+        self.url = f"{self.basis}/core/api"
 
     def schliessen(self):
         self.server.shutdown()
@@ -139,6 +159,7 @@ def _client(tmp_path, ha, **kwargs):
         daten_verzeichnis=tmp_path, modell_verzeichnis=MODELL, kamera="camera.wasseruhr",
         ha_url=ha.url, ha_token="geheim", intervall_minuten=0,
         sensor="sensor.wasseruhr_cv_zaehlerstand", input_number="input_number.wasserzaehler",
+        supervisor_url=ha.basis, ist_addon=True,
     )
     konfig.update(kwargs)
     return TestClient(create_app(Konfig(**konfig)))
@@ -320,3 +341,50 @@ def test_modell_zuruecksetzen(tmp_path, ha):
         assert c.post("/admin/zuruecksetzen", headers={"Origin": "http://boese.example"}).status_code == 403
     with _client(tmp_path, ha) as c:  # mitgeliefertes Modell kommt nicht zurück
         assert c.get("/status").json()["lernbilder"] == 0
+
+
+# ---- Kamera in der Verwaltung auswählen ---------------------------------------------
+
+
+def test_kameraliste_und_vorschau(tmp_path, ha):
+    ha.bild = LERNBILD["506.616"].read_bytes()
+    with _client(tmp_path, ha, kamera=None) as c:
+        d = c.get("/admin/kameras").json()
+        assert [k["entity_id"] for k in d["kameras"]] == ["camera.garten", "camera.wasseruhr"]  # nach Name
+        assert d["kameras"][1]["name"] == "Wasseruhr" and d["aktuell"] is None and d["speichern_moeglich"] is True
+        bild = c.get("/admin/kameras/camera.wasseruhr/bild")
+        assert bild.status_code == 200 and bild.content == ha.bild
+        assert c.get("/admin/kameras/sensor.geheim/bild").status_code == 400  # nur Kameras
+        assert 'id="kamera-wahl"' in c.get("/admin").text
+        assert 'href="admin">Verwaltung</a> die Kamera auswählen' in c.get("/").text
+
+
+def test_kamera_waehlen_speichert_option_und_startet_neu(tmp_path, ha):
+    with _client(tmp_path, ha, kamera=None) as c:
+        antwort = c.post("/admin/kamera?entity_id=camera.wasseruhr")
+        assert antwort.status_code == 200, antwort.text
+        assert antwort.json() == {"kamera": "camera.wasseruhr", "neustart": True}
+        # nur die Kamera geändert, alle anderen Optionen unverändert
+        assert ha.optionen == {"intervall_minuten": 5, "sensor": "sensor.wasseruhr_cv_zaehlerstand",
+                               "http": False, "kamera": "camera.wasseruhr"}
+        for _ in range(60):  # Neustart kommt verzögert, nach der Antwort an den Browser
+            if ha.neustarts:
+                break
+            time.sleep(0.05)
+        assert ha.neustarts == 1
+
+
+def test_kamera_waehlen_fehlerfaelle(tmp_path, ha):
+    with _client(tmp_path, ha, kamera=None) as c:
+        antwort = c.post("/admin/kamera?entity_id=camera.gibtsnicht")
+        assert antwort.status_code == 400 and "gibt es in Home Assistant nicht" in antwort.json()["detail"]
+        ha.optionen_fehler = "Missing option 'irgendwas'"
+        antwort = c.post("/admin/kamera?entity_id=camera.wasseruhr")
+        assert antwort.status_code == 502
+        assert "bei „Kamera“ eintragen: camera.wasseruhr" in antwort.json()["detail"]  # Plan B zum Abtippen
+        assert c.post("/admin/kamera?entity_id=camera.wasseruhr", headers={"Origin": "http://boese.example"}).status_code == 403
+    assert ha.neustarts == 0
+    with _client(tmp_path, ha, kamera=None, ist_addon=False) as c:  # Docker: kein Supervisor
+        antwort = c.post("/admin/kamera?entity_id=camera.wasseruhr")
+        assert antwort.status_code == 400 and "KAMERA=camera.wasseruhr" in antwort.json()["detail"]
+        assert c.get("/admin/kameras").json()["speichern_moeglich"] is False

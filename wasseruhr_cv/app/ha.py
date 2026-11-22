@@ -80,3 +80,35 @@ def zustand_setzen(basis: str, token: str, entity_id: str, state: str, attribute
 
 def dienst(basis: str, token: str, domain: str, service: str, daten: dict) -> None:
     anfrage(basis, token, "POST", f"/services/{_entitaet(domain)}/{_entitaet(service)}", daten)
+
+
+def kameras(basis: str, token: str) -> list[dict]:
+    """Alle Kamera-Entitäten: [{entity_id, name, state}], nach Name sortiert."""
+    alle = json.loads(anfrage(basis, token, "GET", "/states", max_bytes=50 * 1024 * 1024))
+    liste = [
+        {"entity_id": z["entity_id"], "name": (z.get("attributes") or {}).get("friendly_name") or z["entity_id"],
+         "state": z.get("state")}
+        for z in alle if str(z.get("entity_id", "")).startswith("camera.")
+    ]
+    return sorted(liste, key=lambda k: k["name"].lower())
+
+
+# ---- Supervisor-API (nur im Add-on): eigene Optionen lesen/setzen, neu starten -----
+
+def _supervisor(basis: str, token: str, methode: str, pfad: str, daten: dict | None = None) -> dict:
+    antwort = json.loads(anfrage(basis, token, methode, pfad, daten) or b"{}")
+    if antwort.get("result") not in (None, "ok"):
+        raise HAFehler(f"Supervisor: {antwort.get('message') or antwort}")
+    return antwort.get("data") or {}
+
+
+def addon_optionen(basis: str, token: str) -> dict:
+    return _supervisor(basis, token, "GET", "/addons/self/info").get("options") or {}
+
+
+def addon_optionen_setzen(basis: str, token: str, optionen: dict) -> None:
+    _supervisor(basis, token, "POST", "/addons/self/options", {"options": optionen})
+
+
+def addon_neu_starten(basis: str, token: str) -> None:
+    _supervisor(basis, token, "POST", "/addons/self/restart")

@@ -106,7 +106,7 @@ class Automatik:
         if not self.aktiv:
             grund = (
                 "Intervall 0" if self.konfig.intervall_minuten == 0
-                else "keine Kamera eingestellt" if not self.konfig.kamera
+                else "keine Kamera eingestellt – in der Verwaltung auswählen" if not self.konfig.kamera
                 else "kein Zugang zu Home Assistant"
             )
             log.info("Automatik aus (%s)", grund)

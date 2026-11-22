@@ -41,7 +41,8 @@ Unterstützt: `aarch64` (Home Assistant Green/Yellow, Raspberry Pi 4/5 mit
 
 ## Erste Schritte
 
-1. **Kamera einstellen:** Option `kamera` des Add-ons, z. B. `camera.wasseruhr`.
+1. **Kamera auswählen:** Seitenleiste → Wasseruhr → Verwaltung → Kamera aus der
+   Liste wählen (mit Vorschaubild) → Übernehmen.
 2. **ROIs prüfen:** Lernseite → „Kamera jetzt ablesen“. Die eingezeichneten
    Rechtecke müssen auf den Ziffernfenstern liegen, sonst
    [ROIs anpassen](#rois-anpassen).

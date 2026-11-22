@@ -8,7 +8,10 @@ und die API (/ablesen, /lernen …) bleiben wie bisher im Heimnetz erreichbar.""
 from __future__ import annotations
 
 import base64
+import logging
+import re
 import threading
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Callable
@@ -19,7 +22,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, Response
 from starlette.concurrency import run_in_threadpool
 
-from . import modell, schutz, verwaltungsseite
+from . import ha, kamera, modell, schutz, verwaltungsseite
 from .erkennung import zerlege_wert
 from .konfig import NACHKOMMASTELLEN, Konfig
 from .lernbilder import LernbildArchiv
@@ -27,6 +30,8 @@ from .vorlagen import ZIFFERN, VorlagenSpeicher
 from .automatik import Automatik
 
 AUSSCHNITT_RAND = 12  # px um das Zählwerk beim Vorschaubild
+KAMERA_ENTITAET = re.compile(r"camera\.[a-z0-9_]+")
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -97,6 +102,7 @@ def router(k: Kontext) -> APIRouter:
             lerneffekt=konfig.lerneffekt,
             kamera=konfig.kamera,
             kamera_bereit=bool(konfig.kamera and konfig.ha_token),
+            ha_zugang=bool(konfig.ha_token),
             erstausstattung=modell.erstausstattung_info(konfig.daten_verzeichnis),
             einstellungen={
                 "MIN_SCORE": konfig.min_score,
@@ -130,6 +136,63 @@ def router(k: Kontext) -> APIRouter:
         """Von Hand korrigieren, z. B. nach einem Zählertausch."""
         k.automatik.zaehlerstand_setzen(wert_parsen(wert, konfig))
         return k.automatik.zustand()
+
+    # ---- Kamera auswählen ------------------------------------------------------
+
+    def _ha_zugang() -> None:
+        if not konfig.ha_token:
+            raise HTTPException(status_code=400, detail="Kein Zugang zu Home Assistant (nur im Add-on oder mit HA_URL/HA_TOKEN)")
+
+    @r.get("/kameras")
+    def kameras() -> dict:
+        """Alle Kameras aus Home Assistant – für die Auswahl in der Verwaltung."""
+        _ha_zugang()
+        try:
+            liste = ha.kameras(konfig.ha_url, konfig.ha_token)
+        except ha.HAFehler as e:
+            raise HTTPException(status_code=502, detail=f"Kameras nicht abrufbar: {e}") from None
+        return {"kameras": liste, "aktuell": konfig.kamera, "speichern_moeglich": konfig.ist_addon}
+
+    @r.get("/kameras/{entity_id}/bild")
+    def kamera_vorschau(entity_id: str) -> Response:
+        _ha_zugang()
+        if not KAMERA_ENTITAET.fullmatch(entity_id):
+            raise HTTPException(status_code=400, detail="Keine Kamera-Entität")
+        try:
+            bild = kamera.schnappschuss(konfig.ha_url, konfig.ha_token, entity_id)
+        except kamera.KameraFehler as e:
+            raise HTTPException(status_code=502, detail=str(e)) from None
+        typ = "image/png" if bild.startswith(b"\x89PNG") else "image/jpeg"
+        return Response(bild, media_type=typ, headers={"Cache-Control": "no-store"})
+
+    @r.post("/kamera")
+    def kamera_waehlen(entity_id: str = Query(..., description="z. B. camera.wasseruhr")) -> dict:
+        """Speichert die Kamera in der Add-on-Konfiguration und startet das Add-on neu."""
+        _ha_zugang()
+        if not konfig.ist_addon:
+            raise HTTPException(status_code=400, detail=f"Nur im Add-on möglich – in Docker die Variable KAMERA={entity_id} setzen")
+        try:
+            vorhanden = {k["entity_id"] for k in ha.kameras(konfig.ha_url, konfig.ha_token)}
+            if entity_id not in vorhanden:
+                raise HTTPException(status_code=400, detail=f"{entity_id} gibt es in Home Assistant nicht")
+            optionen = ha.addon_optionen(konfig.supervisor_url, konfig.ha_token)
+            optionen["kamera"] = entity_id
+            ha.addon_optionen_setzen(konfig.supervisor_url, konfig.ha_token, optionen)
+        except ha.HAFehler as e:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Konnte die Konfiguration nicht speichern ({e}). Bitte unter Konfiguration "
+                f"bei „Kamera“ eintragen: {entity_id}",
+            ) from None
+        threading.Thread(target=_neu_starten, daemon=True).start()
+        return {"kamera": entity_id, "neustart": True}
+
+    def _neu_starten() -> None:
+        time.sleep(1.5)  # erst die Antwort an den Browser ausliefern
+        try:
+            ha.addon_neu_starten(konfig.supervisor_url, konfig.ha_token)
+        except ha.HAFehler as e:  # die Verbindung reißt beim Neustart ab – erwartbar
+            log.info("Neustart angefordert (%s)", e)
 
     @r.get("/ablesungen")
     def ablesungen() -> list[dict]:

@@ -1,5 +1,5 @@
 name: Wasseruhr-CV
-version: "1.4.1"
+version: "1.4.2"
 slug: wasseruhr_cv
 description: >-
   Liest eine Wasseruhr per Kamera und OpenCV ab (kein LLM, keine Cloud) und
@@ -33,8 +33,10 @@ ports_description:
   8443/tcp: HTTPS im Heimnetz (antwortet nur mit Option https)
 
 options:
+  kamera: ""
   intervall_minuten: 5
   sensor: sensor.wasseruhr_cv_zaehlerstand
+  input_number: ""
   max_m3_pro_stunde: 3
   toleranz_m3: 0.002
   alle_ziffern_gelernt: true
@@ -50,10 +52,10 @@ options:
   admin_nur_ueber_ingress: true
   log_level: INFO
 schema:
-  kamera: 'match(^camera\.[a-z0-9_]+$)?'
+  kamera: str?
   intervall_minuten: int(0,1440)
   sensor: 'match(^sensor\.[a-z0-9_]+$)?'
-  input_number: 'match(^input_number\.[a-z0-9_]+$)?'
+  input_number: str?
   max_m3_pro_stunde: float(0,100)
   toleranz_m3: float(0,1)
   alle_ziffern_gelernt: bool

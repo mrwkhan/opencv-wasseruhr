@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.4.2
+
+- **Kamera auswählen** in der Verwaltung: Liste aller Kameras aus Home
+  Assistant mit Vorschaubild. „Übernehmen“ speichert die Wahl in der
+  Add-on-Konfiguration und startet das Add-on neu.
+- `kamera` und `input_number` stehen immer im Konfigurationsformular, auch
+  solange sie leer sind (vorher unter den ausgeblendeten optionalen Optionen).
+- Ohne Kamera verweisen Lernseite, Verwaltung und Protokoll auf die Auswahl.
+
 ## 1.4.1
 
 - Fehlt der eingestellte `input_number`-Helfer in Home Assistant, meldet die

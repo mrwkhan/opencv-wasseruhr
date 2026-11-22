@@ -9,8 +9,11 @@ braucht keine weiteren Werkzeuge.
 
 1. **Starten:** Im Reiter Info „In der Seitenleiste anzeigen“ und „Watchdog“
    einschalten → **Starten**. In der Seitenleiste erscheint **Wasseruhr**.
-2. **Kamera eintragen:** Reiter Konfiguration → Option `kamera`, z. B.
-   `camera.wasseruhr` → Speichern (das Add-on startet neu).
+2. **Kamera auswählen:** Seitenleiste → Wasseruhr → **Verwaltung** → Karte
+   Automatik → Kamera aus der Liste wählen. Das Vorschaubild zeigt, ob es die
+   richtige ist → **Übernehmen**. Das Add-on speichert die Wahl in seiner
+   Konfiguration und startet neu. Alternativ im Reiter Konfiguration die
+   Entitäts-ID bei `kamera` eintragen, z. B. `camera.wasseruhr`.
 3. **Bild prüfen:** Seitenleiste → Wasseruhr → **Kamera jetzt ablesen**. Im
    Bild sind die Rollen als Rechtecke eingezeichnet, darunter stehen die Ziffern
    so, wie das Add-on sie sieht. Jede Ziffer muss vollständig und mittig zu
@@ -133,7 +136,7 @@ Ziffern, die eintragen, die mehr vom Fenster einnimmt.
 
 | Option | Standard | Bedeutung |
 |---|---|---|
-| `kamera` | – | Kamera-Entität, die abgelesen wird |
+| `kamera` | – | Kamera-Entität, die abgelesen wird (bequemer: Auswahl in der Verwaltung) |
 | `intervall_minuten` | 5 | Abstand der automatischen Ablesung, 0 = aus |
 | `sensor` | `sensor.wasseruhr_cv_zaehlerstand` | Ziel für den Zählerstand, wird angelegt bzw. überschrieben; leer = kein Sensor |
 | `input_number` | – | optional zusätzlich ein vorhandener Zahlen-Helfer |
@@ -188,7 +191,9 @@ Lernbildern mit den neuen ROIs neu erzeugt.
 |---|---|
 | Add-on startet nicht, Protokoll: „Konfiguration ungültig: …“ | Option korrigieren, z. B. `rois` (gültiges JSON) oder doppelt vergebene Ports |
 | Add-on startet nicht: Port schon belegt | Unter Netzwerk eine andere Port-Nummer eintragen oder das Feld leeren |
-| Automatik: „fehler – … HTTP 404 (Entität unbekannt)“ | Kamera-Entität falsch geschrieben (Option `kamera`) |
+| Automatik: „fehler – … HTTP 404 (Entität unbekannt)“ | Kamera-Entität falsch geschrieben: in der Verwaltung neu auswählen |
+| Add-on startet nicht: „KAMERA='…': erwartet eine Entität wie camera.wasseruhr“ | Bei `kamera` die Entitäts-ID eintragen, nicht den Anzeigenamen – oder das Feld leeren und in der Verwaltung auswählen |
+| Kamera-Auswahl: „Konnte die Konfiguration nicht speichern …“ | Die angezeigte Entitäts-ID im Reiter Konfiguration bei `kamera` eintragen |
 | Automatik: „fehler – … HTTP 500 (Kamera liefert kein Bild)“ | Kamera gerade offline |
 | Automatik: „verworfen – unsicher …“ | Bild auf der Lernseite prüfen und nachlernen |
 | Automatik: dauerhaft „kleiner als der bisherige Stand“ | Zählerstand in der Verwaltung von Hand setzen |

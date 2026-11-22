@@ -2,8 +2,9 @@ configuration:
   kamera:
     name: Camera
     description: >-
-      Camera entity to read, e.g. camera.water_meter. Without a camera there is
-      no automatic reading.
+      Camera entity to read, e.g. camera.water_meter. Easier: pick it from a
+      list with preview in the sidebar under Wasseruhr → Verwaltung. Without a
+      camera there is no automatic reading.
   intervall_minuten:
     name: Interval (minutes)
     description: How often the camera is read automatically. 0 turns automatic reading off.
