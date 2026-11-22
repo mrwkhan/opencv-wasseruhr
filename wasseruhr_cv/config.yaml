@@ -1,5 +1,5 @@
 name: Wasseruhr-CV
-version: "1.3.0"
+version: "1.3.1"
 slug: wasseruhr_cv
 description: >-
   Liest eine Wasseruhr per OpenCV-Template-Matching ab (kein LLM, keine Cloud).
@@ -18,12 +18,13 @@ panel_title: Wasseruhr
 # Für "Kamera jetzt ablesen": Kamerabild über die HA-API holen
 homeassistant_api: true
 
-# API für Node-RED & Lernseite im Heimnetz. Ein Node-RED-Add-on erreicht den
-# Dienst auch ohne diesen Port über den internen Hostnamen (Info-Seite).
+# API und Lernseite direkt im Heimnetz – ohne Passwort, daher standardmäßig
+# geschlossen. Ein Node-RED-Add-on erreicht den Dienst intern über den
+# Hostnamen (Info-Seite), bedient wird über die Seitenleiste (Ingress).
 ports:
-  8099/tcp: 8099
+  8099/tcp: null
 ports_description:
-  8099/tcp: API (POST /ablesen) und Lernseite im Heimnetz, ohne Passwort
+  8099/tcp: API und Lernseite direkt im Heimnetz (ohne Passwort, standardmäßig aus)
 
 options:
   lerneffekt: true

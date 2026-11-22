@@ -17,6 +17,7 @@ import io
 import json
 import logging
 import zipfile
+import zlib
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
@@ -73,9 +74,14 @@ def zip_lesen(daten: bytes) -> ModellInhalt:
         dateien = [i for i in zf.infolist() if not i.is_dir()]
         if sum(i.file_size for i in dateien) > MAX_GROESSE:
             raise ModellFehler("ZIP-Inhalt ist entpackt größer als 300 MB")
-        return _einsammeln(
-            (PurePosixPath(i.filename).parts, lambda i=i: zf.read(i)) for i in dateien
-        )
+        try:
+            return _einsammeln(
+                (PurePosixPath(i.filename).parts, lambda i=i: zf.read(i)) for i in dateien
+            )
+        except (zipfile.BadZipFile, zlib.error, EOFError, NotImplementedError) as e:
+            raise ModellFehler(f"ZIP ist beschädigt: {e}") from None
+        except RuntimeError as e:  # verschlüsselte Einträge
+            raise ModellFehler(f"ZIP kann nicht gelesen werden: {e}") from None
 
 
 def verzeichnis_lesen(quelle: Path) -> ModellInhalt:
@@ -105,7 +111,10 @@ def _einsammeln(eintraege: Iterable[tuple[tuple[str, ...], Callable[[], bytes]]]
             inhalt.lernbilder[name] = daten
         else:
             ziffer, name = int(teile[-2]), teile[-1]
-            bild = cv2.imdecode(np.frombuffer(lesen(), np.uint8), cv2.IMREAD_GRAYSCALE)
+            try:
+                bild = cv2.imdecode(np.frombuffer(lesen(), np.uint8), cv2.IMREAD_GRAYSCALE)
+            except cv2.error:  # Pixelgrenze überschritten
+                bild = None
             if bild is None:
                 inhalt.uebersprungen.append(pfad)
                 continue

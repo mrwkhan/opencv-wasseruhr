@@ -42,8 +42,10 @@ Name `wasserzaehler`:
 
    Das ist der interne Hostname des Add-ons, wenn das Repository als
    `https://github.com/mrwkhan/opencv-wasseruhr` hinzugefügt wurde. Er steht
-   auf der Info-Seite des Add-ons unter **Hostname**. Für einen Docker-Dienst
-   auf einem anderen Rechner: `http://<IP>:8099`.
+   auf der Info-Seite des Add-ons unter **Hostname**. Läuft Node-RED nicht
+   als Add-on, im Add-on unter Konfiguration → Netzwerk den Port `8099`
+   eintragen und `http://<IP-von-Home-Assistant>:8099` nehmen. Für einen
+   Docker-Dienst auf einem anderen Rechner: `http://<IP>:8099`.
 4. **Übernahme (Deploy).** 20 Sekunden später läuft die erste Ablesung, danach
    alle 5 Minuten. Mit dem Knopf am Node **alle 5 Minuten** löst du sofort eine aus.
 

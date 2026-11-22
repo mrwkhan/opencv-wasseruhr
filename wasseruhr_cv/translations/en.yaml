@@ -38,6 +38,7 @@ configuration:
     description: DEBUG additionally logs skipped duplicates.
 network:
   8099/tcp: >-
-    API and learning page in the local network (no password). Leave empty to
-    keep the port closed; Node-RED as an add-on still reaches the service
-    internally via the hostname shown on the Info page.
+    API and learning page directly in the local network, without password.
+    Closed by default. Only set it (e.g. 8099) if devices or a Node-RED
+    outside Home Assistant need direct access. A Node-RED add-on reaches the
+    service anyway via the hostname shown on the Info page.

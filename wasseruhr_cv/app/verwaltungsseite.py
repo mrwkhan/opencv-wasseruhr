@@ -33,7 +33,7 @@ _CSS = """
 
 _SKRIPT = r"""<script>
 const $ = (sel) => document.querySelector(sel);
-const WERT_MUSTER = /^\d{1,5}([.,]\d{1,3})?$/;
+const WERT_MUSTER = /^\d{1,9}([.,]\d{1,3})?$/;
 const SEITE_GROESSE = 30;
 let info = null, alleLernbilder = [], zeigeAlle = false;
 

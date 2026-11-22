@@ -1,0 +1,19 @@
+# Hält gepinnte Actions, Python-Pakete und das Basis-Image aktuell (monatliche Pull Requests).
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+  - package-ecosystem: pip
+    directory: /wasseruhr_cv
+    schedule:
+      interval: monthly
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: monthly
+  - package-ecosystem: docker
+    directory: /wasseruhr_cv
+    schedule:
+      interval: monthly

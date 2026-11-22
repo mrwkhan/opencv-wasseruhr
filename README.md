@@ -74,6 +74,11 @@ docker compose logs -f
 Format pro Rolle: `r<rolle>=<ziffer>(<score>/<zweitbeste>:<score2>)`, ein `!`
 markiert eine unsichere Rolle.
 
+> **Sicherheit:** Der Dienst hat kein Passwort. Port 8099 nur im Heimnetz
+> betreiben, nie im Router freigeben. Webseiten im Browser können ihm nichts
+> beibringen (Ursprungsprüfung), Bilder sind auf 10 MB und 25 Megapixel
+> begrenzt. Im Add-on ist der Port standardmäßig geschlossen.
+
 > **Datenschutz:** Lernbilder zeigen die eigene Wasseruhr samt Zählerständen.
 > `data/` und Modell-Exporte (`*.zip`) sind deshalb per `.gitignore` vom
 > Repository ausgeschlossen. Nicht öffentlich teilen.
@@ -236,9 +241,17 @@ Home-Assistant-Supervisors (Ingress), alle anderen bekommen `403`.
 
 ### Fehler
 
-`400` bei leerem Body, unlesbarem Bild, ROI außerhalb des Bildes oder
-ungültigem `wert`, `404` wenn eine Ablesung nicht mehr im Speicher ist, `422`
-wenn `wert` fehlt. Antwort jeweils als `{"detail": "<Beschreibung>"}`.
+| Status | Wann |
+|---|---|
+| `400` | leerer Body, unlesbares oder zu großes Bild (über 25 Megapixel), ROI außerhalb des Bildes, ungültiger `wert`, beschädigtes ZIP |
+| `403` | Browser-Anfrage von einer fremden Webseite (Origin ≠ Host), oder `/admin` ohne Ingress bei `ADMIN_NUR_INGRESS=an` |
+| `404` | Ablesung nicht mehr im Speicher |
+| `413` | Body größer als 10 MB (Bilder) bzw. 300 MB (Modell-Import) |
+| `422` | `wert` fehlt |
+
+Antwort jeweils als `{"detail": "<Beschreibung>"}`. Schreibende Anfragen mit
+einem `Origin`-Header werden nur angenommen, wenn er zum `Host` passt.
+Programme wie Node-RED oder curl senden keinen `Origin` und sind nicht betroffen.
 
 ## So funktioniert die Erkennung
 

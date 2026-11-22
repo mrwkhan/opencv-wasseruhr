@@ -19,13 +19,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, Response
 from starlette.concurrency import run_in_threadpool
 
-from . import modell, verwaltungsseite
+from . import modell, schutz, verwaltungsseite
 from .erkennung import zerlege_wert
 from .konfig import NACHKOMMASTELLEN, Konfig
 from .lernbilder import LernbildArchiv
 from .vorlagen import VorlagenSpeicher
 
-INGRESS_IP = "172.30.32.2"  # Absender aller Ingress-Anfragen des HA-Supervisors
 AUSSCHNITT_RAND = 12  # px um das Zählwerk beim Vorschaubild
 
 
@@ -43,7 +42,7 @@ class Kontext:
 def verwaltung_erlaubt(konfig: Konfig, request: Request) -> bool:
     if not konfig.admin_nur_ingress:
         return True
-    return request.client is not None and request.client.host == INGRESS_IP
+    return schutz.ist_ingress(request)
 
 
 def wert_parsen(wert_text: str, konfig: Konfig) -> float:
@@ -231,14 +230,18 @@ def router(k: Kontext) -> APIRouter:
         request: Request,
         modus: str = Query("ergaenzen", pattern="^(ergaenzen|ersetzen)$"),
     ) -> dict:
-        return await run_in_threadpool(_importieren, await request.body(), modus)
+        daten = await schutz.body_lesen(request, modell.MAX_GROESSE)
+        return await run_in_threadpool(_importieren, daten, modus)
 
     return r
 
 
 def _zaehlwerk_ausschnitt(daten: bytes, rois) -> bytes | None:
     """Nur das Zählwerk (alle ROIs plus Rand) – so ist der Wert in der Liste lesbar."""
-    bild = cv2.imdecode(np.frombuffer(daten, np.uint8), cv2.IMREAD_COLOR)
+    try:
+        bild = cv2.imdecode(np.frombuffer(daten, np.uint8), cv2.IMREAD_COLOR)
+    except cv2.error:  # Pixelgrenze überschritten
+        return None
     if bild is None:
         return None
     hoehe, breite = bild.shape[:2]

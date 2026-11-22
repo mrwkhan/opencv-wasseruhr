@@ -46,6 +46,7 @@ configuration:
     description: DEBUG zeigt zusätzlich übersprungene Duplikate.
 network:
   8099/tcp: >-
-    API und Lernseite im Heimnetz (ohne Passwort). Leer lassen, um den Port
-    nicht zu öffnen. Node-RED als Add-on erreicht den Dienst trotzdem intern
-    über den Hostnamen von der Info-Seite.
+    API und Lernseite direkt im Heimnetz, ohne Passwort. Standardmäßig
+    geschlossen. Nur eintragen (z. B. 8099), wenn Geräte oder ein Node-RED
+    außerhalb von Home Assistant direkt zugreifen sollen. Ein Node-RED-Add-on
+    erreicht den Dienst auch so über den Hostnamen von der Info-Seite.

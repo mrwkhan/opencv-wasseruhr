@@ -43,7 +43,8 @@ const CV_URL = "http://1938f1d6-wasseruhr-cv:8099";
 `1938f1d6-wasseruhr-cv` ist der interne Hostname, wenn das Repository als
 `https://github.com/mrwkhan/opencv-wasseruhr` hinzugefügt wurde. Er steht auch
 auf der Info-Seite des Add-ons unter **Hostname**. Ein Node-RED-Add-on erreicht
-ihn direkt. Läuft Node-RED woanders, nimm `http://<IP-von-Home-Assistant>:8099`.
+ihn direkt. Läuft Node-RED woanders, aktiviere den Port (siehe
+[Sicherheit](#sicherheit)) und nimm `http://<IP-von-Home-Assistant>:8099`.
 
 ## Nachlernen
 
@@ -53,8 +54,8 @@ unsicher: richtigen Zählerstand eintragen → **Mit diesem Bild lernen**.
 **Kamera jetzt ablesen** holt sofort ein frisches Bild, ohne auf den nächsten
 Node-RED-Durchlauf zu warten.
 
-Im Heimnetz ist die Lernseite auch unter `http://<IP-von-Home-Assistant>:8099/`
-erreichbar, z. B. am Handy, dort aber ohne Verwaltung.
+Am Handy geht das am bequemsten über die Home-Assistant-App: Dort ist die
+Seitenleiste mit Lernseite und Verwaltung genauso da, auch unterwegs.
 
 ## Verwaltung
 
@@ -118,12 +119,17 @@ Lernbildern mit den neuen ROIs neu erzeugt, du musst nichts neu anlernen.
 
 ## Sicherheit
 
-- Port 8099 (API und Lernseite) ist im Heimnetz **ohne Passwort** erreichbar.
-  Keine Portfreigabe im Router einrichten. Wer ihn nicht braucht, leert unter
-  Konfiguration → Netzwerk das Feld für 8099. Ein Node-RED-Add-on arbeitet über
-  den internen Hostnamen trotzdem weiter.
-- Löschen, Import und Export gehen standardmäßig nur über die Seitenleiste,
-  also nur für in Home Assistant angemeldete Benutzer.
+- Bedient wird über die Seitenleiste, also nur von in Home Assistant
+  angemeldeten Benutzern. Ein Node-RED-Add-on spricht den Dienst intern über
+  den Hostnamen an.
+- **Port 8099 ist standardmäßig geschlossen.** Die API und die Lernseite
+  direkt im Heimnetz haben kein Passwort. Brauchst du sie (z. B. für ein
+  Node-RED außerhalb von Home Assistant), trage unter Konfiguration →
+  Netzwerk `8099` ein. Nie eine Portfreigabe im Router einrichten.
+- Auch bei offenem Port gilt: Löschen, Import und Export nur über die
+  Seitenleiste (Option `admin_nur_ueber_ingress`). Webseiten, die du im
+  Browser besuchst, können dem Dienst nichts beibringen (Ursprungsprüfung).
+  Bilder sind auf 10 MB und 25 Megapixel begrenzt, Modell-Importe auf 300 MB.
 
 ## Fehlersuche
 
@@ -134,5 +140,7 @@ Lernbildern mit den neuen ROIs neu erzeugt, du musst nichts neu anlernen.
 | Node-RED: `ENOTFOUND …-wasseruhr-cv` / `ECONNREFUSED` | Add-on läuft nicht, oder der Hostname weicht ab (Info-Seite) |
 | „Kamera jetzt ablesen“: HTTP 404 | Kamera-Entität falsch geschrieben (Option `kamera`) |
 | „Kamera jetzt ablesen“: HTTP 500 | Kamera liefert gerade kein Bild (offline?) |
+| Anfrage antwortet 403 „von fremder Webseite abgelehnt“ | Ein Browser hat von einer anderen Adresse aus geschickt. Die Lernseite über dieselbe Adresse öffnen, über die du sie aufrufst; Programme wie Node-RED senden keinen Origin und sind nicht betroffen |
+| `http://<ha>:8099/` nicht erreichbar | Port ist standardmäßig zu: unter Konfiguration → Netzwerk `8099` eintragen |
 | `http://<ha>:8099/admin` antwortet 403 | So gewollt, die Verwaltung ist über die Seitenleiste erreichbar (Option `admin_nur_ueber_ingress`) |
 | Ständig `unsicher` mit niedrigen Scores | Kamera verrutscht oder Licht verändert: Vorlagen prüfen, ein paar Bilder nachlernen |

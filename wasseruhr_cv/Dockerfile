@@ -11,7 +11,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     DATA_DIR=/data \
-    MODELL_DIR=/opt/wasseruhr/modell
+    MODELL_DIR=/opt/wasseruhr/modell \
+    OPENCV_IO_MAX_IMAGE_PIXELS=25000000
 
 WORKDIR /opt/wasseruhr
 
@@ -28,7 +29,7 @@ COPY start.py .
 COPY modell ./modell
 
 EXPOSE 8099
-HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
     CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8099/health', timeout=4).status == 200 else 1)"
 
 CMD ["python", "start.py"]

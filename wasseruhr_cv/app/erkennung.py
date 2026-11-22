@@ -38,7 +38,11 @@ class ZiffernErgebnis:
 def dekodiere_bild(daten: bytes) -> np.ndarray:
     if not daten:
         raise BildFehler("Leerer Request-Body – rohes JPEG erwartet")
-    bild = cv2.imdecode(np.frombuffer(daten, np.uint8), cv2.IMREAD_COLOR)
+    try:
+        bild = cv2.imdecode(np.frombuffer(daten, np.uint8), cv2.IMREAD_COLOR)
+    except cv2.error:
+        # OPENCV_IO_MAX_IMAGE_PIXELS überschritten (siehe app/__init__.py)
+        raise BildFehler("Bild ist zu groß (Pixelzahl über der Grenze)") from None
     if bild is None:
         raise BildFehler("Body ist kein lesbares Bild – rohes JPEG erwartet")
     return bild

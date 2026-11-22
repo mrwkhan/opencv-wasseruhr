@@ -76,7 +76,7 @@ _SKRIPT = """<script>
     const meldung = document.getElementById("meldung");
     const knopf = form.querySelector("button");
     const wert = form.wert.value.trim().replace(",", ".");
-    if (!/^\\d{1,5}(\\.\\d{1,3})?$/.test(wert)) {
+    if (!/^\\d{1,9}(\\.\\d{1,3})?$/.test(wert)) {
       meldung.className = "meldung schlecht"; meldung.textContent = "Bitte im Format 506.388 eingeben."; return;
     }
     knopf.disabled = true; meldung.className = "meldung leise"; meldung.textContent = "Lerne …";

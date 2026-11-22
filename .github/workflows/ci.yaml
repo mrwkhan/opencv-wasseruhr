@@ -14,8 +14,10 @@ jobs:
     name: Tests
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.12"
           cache: pip
@@ -29,8 +31,10 @@ jobs:
     name: Add-on-Konfiguration
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
-      - uses: frenck/action-addon-linter@v2
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: frenck/action-addon-linter@d51677290aef26cdfc835271dd3c7343ce502809 # v2.21.2
         with:
           path: "./wasseruhr_cv"
 
@@ -45,7 +49,9 @@ jobs:
             runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
       - name: Image bauen (wie der Supervisor)
         run: docker build --build-arg BUILD_ARCH=${{ matrix.arch }} -t wasseruhr-cv:ci wasseruhr_cv
       - name: Starten, ablesen, lernen

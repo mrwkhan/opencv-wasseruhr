@@ -15,7 +15,7 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, Response
 from starlette.concurrency import run_in_threadpool
 
-from . import __version__, debugbild, kamera, lernseite, modell, verwaltung
+from . import __version__, debugbild, kamera, lernseite, modell, schutz, verwaltung
 from .erkennung import (
     BildFehler,
     ZiffernErgebnis,
@@ -117,6 +117,7 @@ def create_app(konfig: Konfig | None = None) -> FastAPI:
         yield
 
     app = FastAPI(title="Wasseruhr-CV", version=__version__, lifespan=lifespan)
+    schutz.einrichten(app)
     app.state.konfig = konfig
     app.state.speicher = speicher
     app.state.archiv = archiv
@@ -171,7 +172,7 @@ def create_app(konfig: Konfig | None = None) -> FastAPI:
 
     @app.post("/ablesen")
     async def ablesen(request: Request) -> dict:
-        return await run_in_threadpool(_ablesen, await request.body())
+        return await run_in_threadpool(_ablesen, await schutz.body_lesen(request, schutz.MAX_BILD_BYTES))
 
     # ---- POST /kamera-ablesen ------------------------------------------------
 
@@ -225,7 +226,7 @@ def create_app(konfig: Konfig | None = None) -> FastAPI:
         anzahl = speicher.anzahl_pro_ziffer()
         log.info(
             "lernen: wert=%s ziffern=%s gespeichert=%d%s vorlagen_pro_ziffer=%s",
-            wert_text, "".join(map(str, soll)), gespeichert,
+            f"{wert:.3f}", "".join(map(str, soll)), gespeichert,
             "" if konfig.lerneffekt else " (Lerneffekt aus, nur archiviert)", anzahl,
         )
         if aus_verlauf:
@@ -240,7 +241,8 @@ def create_app(konfig: Konfig | None = None) -> FastAPI:
             None, description="Ohne Body: das Bild dieser Ablesung (Nr. aus der Lernseite) lernen"
         ),
     ) -> dict:
-        return await run_in_threadpool(_lernen, await request.body(), wert, ablesung)
+        daten = await schutz.body_lesen(request, schutz.MAX_BILD_BYTES)
+        return await run_in_threadpool(_lernen, daten, wert, ablesung)
 
     # ---- GET /status, /debug.png, /health ----------------------------------
 
