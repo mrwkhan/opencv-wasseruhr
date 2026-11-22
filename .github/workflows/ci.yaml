@@ -58,11 +58,11 @@ jobs:
         run: |
           docker run -d --name wucv -p 8099:8099 wasseruhr-cv:ci
           for i in $(seq 1 30); do curl -sf http://localhost:8099/health && break; sleep 1; done
-          curl -sf -X POST -H "Content-Type: image/jpeg" --data-binary @tests/beispiel.jpg \
-            "http://localhost:8099/lernen?wert=506.388"
-          curl -sf -X POST -H "Content-Type: image/jpeg" --data-binary @tests/beispiel.jpg \
-            http://localhost:8099/ablesen | tee ablesung.json
-          python3 -c "import json; d = json.load(open('ablesung.json')); assert d['sicher'] and d['wert'] == 506.388, d"
+          curl -sf -X POST -H "Content-Type: image/jpeg" --data-binary @tests/example.jpg \
+            "http://localhost:8099/learn?value=506.388"
+          curl -sf -X POST -H "Content-Type: image/jpeg" --data-binary @tests/example.jpg \
+            http://localhost:8099/read | tee reading.json
+          python3 -c "import json; d = json.load(open('reading.json')); assert d['certain'] and d['value'] == 506.388, d"
       - name: Log
         if: always()
         run: docker logs wucv

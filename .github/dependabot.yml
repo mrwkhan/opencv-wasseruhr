@@ -1,5 +1,5 @@
-# Hält Actions, Python-Pakete und das Basis-Image aktuell: ein gebündelter
-# Pull Request pro Bereich und Monat, die CI prüft jeden.
+# Keeps actions, Python packages and the base image up to date: one bundled pull
+# request per area and month, the CI checks each of them.
 version: 2
 updates:
   - package-ecosystem: github-actions
@@ -10,16 +10,16 @@ updates:
       actions:
         patterns: ["*"]
 
-  # Laufzeit (Image): fastapi, uvicorn, opencv, numpy
+  # Runtime (image): fastapi, uvicorn, opencv, numpy
   - package-ecosystem: pip
     directory: /wasseruhr_cv
     schedule:
       interval: monthly
     groups:
-      laufzeit:
+      runtime:
         patterns: ["*"]
 
-  # Nur Test-Werkzeuge – die Laufzeit-Pakete (per -r eingebunden) kommen oben
+  # Test tools only – the runtime packages (included via -r) come from above
   - package-ecosystem: pip
     directory: /
     schedule:
@@ -29,11 +29,11 @@ updates:
       - dependency-name: httpx2
       - dependency-name: pyyaml
     groups:
-      entwicklung:
+      development:
         patterns: ["*"]
 
-  # Python-Basis-Image: bei 3.12 bleiben; ein Sprung auf eine neue Python-Version
-  # braucht passende aarch64-Wheels für OpenCV/numpy und wird bewusst gemacht.
+  # Python base image: stay on 3.12; moving to a new Python version needs
+  # matching aarch64 wheels for OpenCV/numpy and is done deliberately.
   - package-ecosystem: docker
     directory: /wasseruhr_cv
     schedule:

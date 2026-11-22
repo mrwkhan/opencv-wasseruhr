@@ -1,6 +1,6 @@
 # Wasseruhr-CV as a standalone Docker service (without the Home Assistant add-on).
 # Start: docker compose up -d --build   ->   training page http://<host>:8099/
-# Option names are German on purpose (same as the add-on); values on/off and an/aus both work.
+# Switches take true/false. The German variable names of version 1.x still work.
 services:
   wasseruhr-cv:
     build: ./wasseruhr_cv
@@ -9,32 +9,32 @@ services:
     restart: unless-stopped
     ports:
       - "8099:8099"           # training page, admin page, API (HTTP)
-      # - "8443:8443"         # only with HTTPS: "an"
+      # - "8443:8443"         # only with HTTPS: "true"
     volumes:
-      - ./data:/data          # lernbilder/ (all training images) + vorlagen/<digit>/
+      - ./data:/data          # images/ (all training images) + templates/<digit>/
     environment:
-      # an  = rebuild templates from all training images on start, /lernen learns right away
-      # aus = templates frozen, /lernen only archives the image
-      LERNEFFEKT: "${LERNEFFEKT:-an}"
+      # true  = rebuild templates from all training images on start, /learn learns right away
+      # false = templates frozen, /learn only archives the image
+      LEARNING: "${LEARNING:-true}"
       MIN_SCORE: "0.70"
-      MIN_ABSTAND: "0.08"
-      MAX_VORLAGEN_PRO_ZIFFER: "30"
-      # Language of pages, messages and log: auto (pages follow the browser), de or en
-      # SPRACHE: "auto"
-      # VERSCHIEBUNG: "3"     # template matching search range in px (±)
+      MIN_MARGIN: "0.08"
+      MAX_TEMPLATES_PER_DIGIT: "30"
+      # Language of pages, messages and log: auto (pages follow the browser), en or de
+      # LANGUAGE: "auto"
+      # SHIFT: "3"            # template matching search range in px (±)
       # LOG_LEVEL: "INFO"
       # ROIs per wheel [x1, y1, x2, y2] (left -> right), see README "Adjusting the ROIs":
       # ROIS: "[[130,144,162,196],[173,144,205,196],[216,144,248,196],[260,144,292,196],[304,144,336,196],[347,144,379,196],[391,144,423,196],[435,144,467,196]]"
       # Automatic reading: fetch the camera image from Home Assistant, check it and
       # write the meter reading to HA. The token belongs in a .env file next to
       # this file (HA_TOKEN=...), never in here.
-      # KAMERA: "camera.water_meter"
+      # CAMERA: "camera.water_meter"
       # HA_URL: "http://homeassistant.local:8123/api"
       # HA_TOKEN: "${HA_TOKEN}"
-      # INTERVALL_MINUTEN: "5"
-      # SENSOR: "sensor.wasseruhr_cv_zaehlerstand"
+      # INTERVAL_MINUTES: "5"
+      # SENSOR: "sensor.wasseruhr_cv_meter_reading"
       # INPUT_NUMBER: "input_number.water_meter"
       # Additionally HTTPS (publish port 8443 above under ports, certificate via a volume):
-      # HTTPS: "an"
-      # ZERTIFIKAT: "/ssl/fullchain.pem"
-      # SCHLUESSEL: "/ssl/privkey.pem"
+      # HTTPS: "true"
+      # CERTIFICATE: "/ssl/fullchain.pem"
+      # CERTIFICATE_KEY: "/ssl/privkey.pem"

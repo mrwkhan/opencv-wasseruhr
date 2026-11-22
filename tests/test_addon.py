@@ -1,4 +1,4 @@
-"""Konsistenz des Add-ons: Versionen, Optionen, Übersetzungen, Repository."""
+"""Consistency of the add-on: versions, options, translations, repository."""
 
 import re
 from pathlib import Path
@@ -7,81 +7,89 @@ import yaml
 
 import start
 from app import __version__
+from app.migration import LEGACY_OPTIONS
 
-WURZEL = Path(__file__).parent.parent
-ADDON = WURZEL / "wasseruhr_cv"
-KONFIG = yaml.safe_load((ADDON / "config.yaml").read_text())
+ROOT = Path(__file__).parent.parent
+ADDON = ROOT / "wasseruhr_cv"
+CONFIG = yaml.safe_load((ADDON / "config.yaml").read_text())
 
 
-def test_versionen_gleich():
-    pyproject = re.search(r'^version = "(.+)"$', (WURZEL / "pyproject.toml").read_text(), re.M).group(1)
-    assert KONFIG["version"] == __version__ == pyproject
+def test_versions_match():
+    pyproject = re.search(r'^version = "(.+)"$', (ROOT / "pyproject.toml").read_text(), re.M).group(1)
+    assert CONFIG["version"] == __version__ == pyproject
     assert f"## {__version__}" in (ADDON / "CHANGELOG.md").read_text()
 
 
-def test_jede_option_kommt_beim_dienst_an():
-    assert set(KONFIG["schema"]) == set(start.ZUORDNUNG)
-    assert set(KONFIG["options"]) <= set(KONFIG["schema"])
+def test_every_option_reaches_the_service():
+    assert set(CONFIG["schema"]) == set(start.MAPPING)
+    assert set(CONFIG["options"]) <= set(CONFIG["schema"])
 
 
-def test_jede_option_ist_uebersetzt():
-    for sprache in ("de", "en"):
-        uebersetzung = yaml.safe_load((ADDON / "translations" / f"{sprache}.yaml").read_text())
-        for option in KONFIG["schema"]:
-            eintrag = uebersetzung["configuration"][option]
-            assert eintrag["name"] and eintrag["description"], (sprache, option)
-        assert set(uebersetzung["network"]) == set(KONFIG["ports"])
+def test_option_names_are_english_and_old_ones_are_migrated():
+    for option in CONFIG["schema"]:
+        assert re.fullmatch(r"[a-z0-9_]+", option) and option not in LEGACY_OPTIONS, option
+    assert set(LEGACY_OPTIONS.values()) <= set(CONFIG["schema"])
 
 
-def test_repository_passt_zum_addon():
-    repo = yaml.safe_load((WURZEL / "repository.yaml").read_text())
-    assert repo["url"] == KONFIG["url"]
-    assert KONFIG["slug"] == ADDON.name
-    assert KONFIG.get("ingress_port", 8099) == 8099 == int(start.PORT)  # 8099 = HA-Standard
-    assert "HEALTHCHECK" in (ADDON / "Dockerfile").read_text()  # Watchdog
-    for datei in ("Dockerfile", "DOCS.md", "README.md", "icon.png", "logo.png", "modell/lernbilder", "modell/vorlagen"):
-        assert (ADDON / datei).exists(), datei
+def test_every_option_is_translated():
+    for language in ("en", "de"):
+        translation = yaml.safe_load((ADDON / "translations" / f"{language}.yaml").read_text())
+        assert set(translation["configuration"]) == set(CONFIG["schema"]), language
+        for option in CONFIG["schema"]:
+            entry = translation["configuration"][option]
+            assert entry["name"] and entry["description"], (language, option)
+        assert set(translation["network"]) == set(CONFIG["ports"])
 
 
-def test_mitgeliefertes_modell_ist_vollstaendig():
-    """Das initiale Modell gehört zum Projekt: alle Ziffern 0–9, gültige Dateinamen."""
-    from app.lernbilder import LernbildArchiv
-    from app.vorlagen import _von_platte
-
-    lernbilder = LernbildArchiv(ADDON / "modell" / "lernbilder").eintraege()
-    assert len(lernbilder) >= 10
-    assert all(e.pfad.suffix == ".png" for e in lernbilder)  # verlustfrei, plattformunabhängig
-    vorlagen = _von_platte(ADDON / "modell" / "vorlagen")
-    assert all(vorlagen[z] for z in range(10)), {z: len(v) for z, v in vorlagen.items()}
+def test_repository_matches_the_addon():
+    repository = yaml.safe_load((ROOT / "repository.yaml").read_text())
+    assert repository["url"] == CONFIG["url"]
+    assert CONFIG["slug"] == ADDON.name
+    assert CONFIG.get("ingress_port", 8099) == 8099 == int(start.PORT)  # 8099 = HA default
+    assert "HEALTHCHECK" in (ADDON / "Dockerfile").read_text()  # watchdog
+    for file in ("Dockerfile", "DOCS.md", "README.md", "icon.png", "logo.png", "model/images", "model/templates"):
+        assert (ADDON / file).exists(), file
 
 
-def test_mitgeliefertes_modell_zeigt_nur_das_zaehlwerk():
-    """Datenschutz: außerhalb des Zählwerks (ROIs + 16 px) muss jedes Lernbild schwarz sein –
-    sonst wären z. B. die Seriennummer der Uhr oder der Raum auf GitHub zu sehen."""
+def test_bundled_model_is_complete():
+    """The initial model is part of the project: all digits 0–9, valid file names."""
+    from app.image_archive import ImageArchive
+    from app.templates import _from_disk
+
+    images = ImageArchive(ADDON / "model" / "images").entries()
+    assert len(images) >= 10
+    assert all(e.path.suffix == ".png" for e in images)  # lossless, platform independent
+    templates = _from_disk(ADDON / "model" / "templates")
+    assert all(templates[d] for d in range(10)), {d: len(t) for d, t in templates.items()}
+
+
+def test_bundled_model_shows_only_the_counter():
+    """Privacy: outside the counter (ROIs + 16 px) every training image must be black –
+    otherwise e.g. the serial number of the meter or the room would be visible on GitHub."""
     import cv2
     import numpy as np
-    from app.konfig import STANDARD_ROIS
+    from app.config import DEFAULT_ROIS
 
-    rand = 16
-    x1, y1 = min(r[0] for r in STANDARD_ROIS) - rand, min(r[1] for r in STANDARD_ROIS) - rand
-    x2, y2 = max(r[2] for r in STANDARD_ROIS) + rand, max(r[3] for r in STANDARD_ROIS) + rand
-    bilder = [p for p in (ADDON / "modell" / "lernbilder").iterdir() if p.is_file()]
-    for pfad in [*bilder, WURZEL / "tests" / "beispiel.jpg", WURZEL / "tests" / "anderes.jpg"]:
-        bild = cv2.imread(str(pfad))
-        aussen = bild.copy()
-        aussen[y1:y2, x1:x2] = 0
-        grenze = 0 if pfad.suffix == ".png" else 40  # JPEG: Kompressionsrauschen am Rand
-        assert int(aussen.max()) <= grenze, f"{pfad.name} zeigt mehr als das Zählwerk"
-        assert np.count_nonzero(aussen > 10) < (5000 if pfad.suffix != ".png" else 1), pfad.name
+    margin = 16
+    x1, y1 = min(r[0] for r in DEFAULT_ROIS) - margin, min(r[1] for r in DEFAULT_ROIS) - margin
+    x2, y2 = max(r[2] for r in DEFAULT_ROIS) + margin, max(r[3] for r in DEFAULT_ROIS) + margin
+    images = [p for p in (ADDON / "model" / "images").iterdir() if p.is_file()]
+    for path in [*images, ROOT / "tests" / "example.jpg", ROOT / "tests" / "other.jpg"]:
+        image = cv2.imread(str(path))
+        outside = image.copy()
+        outside[y1:y2, x1:x2] = 0
+        limit = 0 if path.suffix == ".png" else 40  # JPEG: compression noise at the edge
+        assert int(outside.max()) <= limit, f"{path.name} shows more than the counter"
+        assert np.count_nonzero(outside > 10) < (5000 if path.suffix != ".png" else 1), path.name
 
 
-def test_mitgeliefertes_modell_wird_beim_ersten_start_uebernommen(tmp_path):
+def test_bundled_model_is_installed_on_first_start(tmp_path):
     from fastapi.testclient import TestClient
 
-    from app.konfig import Konfig
+    from app.config import Config
     from app.main import create_app
 
-    with TestClient(create_app(Konfig(daten_verzeichnis=tmp_path, modell_verzeichnis=ADDON / "modell"))) as c:
+    with TestClient(create_app(Config(data_dir=tmp_path, model_dir=ADDON / "model"))) as c:
         status = c.get("/status").json()
-        assert status["fehlende_vorlagen"] == [] and status["lernbilder"] >= 10
-        assert c.get("/admin/info").json()["erstausstattung"]["uebernommen"] is True
+        assert status["missing_templates"] == [] and status["training_images"] >= 10
+        assert c.get("/admin/info").json()["bundled_model"]["installed"] is True

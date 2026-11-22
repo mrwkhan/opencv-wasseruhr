@@ -1,6 +1,6 @@
-# Wasseruhr-CV
+*Deutsche Anleitung: weiter unten im Abschnitt „Deutsch“.*
 
-**English** below · **Deutsch:** siehe weiter unten [„Deutsch“](#deutsch)
+# Wasseruhr-CV
 
 Reads the roller counter of a water meter with a camera and classic computer
 vision (OpenCV template matching, no LLM, no cloud) and writes the checked
@@ -10,47 +10,52 @@ other tools.
 ## Setup
 
 1. **Start:** on the Info tab, turn on "Show in sidebar" and "Watchdog" →
-   **Start**. **Wasseruhr** appears in the sidebar.
-2. **Select the camera:** sidebar → Wasseruhr → **Admin** → card Auto-reading
-   → pick the camera from the list. The preview shows whether it is the right
-   one → **Apply**. The add-on stores the choice in its configuration and
-   restarts. Alternatively enter the entity ID under `kamera` on the
-   Configuration tab, e.g. `camera.water_meter`.
-3. **Check the image:** sidebar → Wasseruhr → **Read camera now**. The wheels
-   are drawn into the image as rectangles, below them the digits as the add-on
-   sees them. Every digit must be fully visible and centred, otherwise set the
-   option `rois` (see [ROIs](#rois)).
+   **Start**. **Wasseruhr-CV** appears in the sidebar.
+2. **Select the camera:** sidebar → Wasseruhr-CV → **Admin** → card
+   Auto-reading → pick the camera from the list. The preview shows whether it
+   is the right one → **Apply**. The add-on stores the choice in its
+   configuration and restarts. Alternatively enter the entity ID under
+   `camera` on the Configuration tab, e.g. `camera.water_meter`.
+3. **Check the image:** sidebar → Wasseruhr-CV → **Read camera now**. The
+   wheels are drawn into the image as rectangles, below them the digits as the
+   add-on sees them. Every digit must be fully visible and centred, otherwise
+   set the option `rois` (see ROIs below).
 4. **Model:** the add-on ships an **initial model** (the training images and
    templates of the meter it was developed for). It is installed on first
-   start. If your meter looks different, use **Reset model** on the admin
-   page and teach it again on the training page (see [Training](#training)),
-   or import your own model as a ZIP.
+   start. If your meter looks different, use **Reset model** on the admin page
+   and teach it again on the training page (see Training below), or import
+   your own model as a ZIP.
 5. **Done.** From now on the add-on reads every 5 minutes and writes the
-   meter reading to the sensor `sensor.wasseruhr_cv_zaehlerstand`.
+   meter reading to the sensor `sensor.wasseruhr_cv_meter_reading`.
 
 **Energy dashboard:** Settings → Dashboards → Energy → add water consumption
-→ select `sensor.wasseruhr_cv_zaehlerstand`. The sensor has the unit m³, the
+→ select `sensor.wasseruhr_cv_meter_reading`. The sensor has the unit m³, the
 device class water and is total increasing.
+
+**Updating from version 1.x:** options, data and the confirmed meter reading
+are taken over automatically. An installation that wrote to the old sensor
+`sensor.wasseruhr_cv_zaehlerstand` keeps writing there, so the Energy
+dashboard history continues.
 
 ## Language
 
 The training page, the admin page and all messages exist in **English and
-German**. The pages follow your browser language; the **DE / EN** switch at
+German**. The pages follow your browser language; the **EN / DE** switch at
 the top right of every page changes it and is remembered. The log and the
 sensor (name and reason) follow the language of Home Assistant. The option
-`sprache` sets one language for everything: `auto` (default), `de` or `en`.
+`language` sets one language for everything: `auto` (default), `en` or `de`.
 
 ## Automatic reading
 
-Every `intervall_minuten` the add-on fetches the camera image, reads it and
+Every `interval_minutes` the add-on fetches the camera image, reads it and
 checks the value. Only what is **certain and plausible** is written:
 
 | Check | Result if it fails |
 |---|---|
-| Every wheel recognised unambiguously (`min_score`, `min_abstand`) | rejected: "uncertain …" with the affected wheels |
-| There is a template for every digit 0–9 (`alle_ziffern_gelernt`) | rejected: "no templates yet for digit …" |
-| The meter only counts forward | rejected: "lower than the previous reading" (deviations up to `toleranz_m3` are silently ignored) |
-| At most `max_m3_pro_stunde` since the last confirmation | rejected: "… is implausible" |
+| Every wheel recognised unambiguously (`min_score`, `min_margin`) | rejected: "uncertain …" with the affected wheels |
+| There is a template for every digit 0–9 (switch `require_all_digits`) | rejected: "no templates yet for digit …" |
+| The meter only counts forward | rejected: "lower than the previous reading" (deviations up to `tolerance_m3` are silently ignored) |
+| At most `max_m3_per_hour` since the last confirmation | rejected: "… is implausible" |
 
 The first certain value is accepted without comparison. After that it is
 compared with the last confirmed reading, which survives restarts and
@@ -58,7 +63,7 @@ updates.
 
 **Where it is written:**
 
-- **Sensor** (option `sensor`, default `sensor.wasseruhr_cv_zaehlerstand`):
+- **Sensor** (option `sensor`, default `sensor.wasseruhr_cv_meter_reading`):
   the meter reading in m³. The sensor does not need to exist beforehand, the
   add-on creates it. If you enter the name of an **existing** sensor, its
   value is overwritten, e.g. to continue an existing sensor. Attributes:
@@ -85,15 +90,15 @@ result. The Log tab shows the history as well.
 | Way | Turn on | Port | Encrypted | Login |
 |---|---|---|---|---|
 | **Sidebar** (also in the HA app) | always on | – | like Home Assistant | Home Assistant user |
-| **HTTP in the local network** | option `http` | `8080/tcp`, default **8099** | no | none |
-| **HTTPS in the local network** | option `https` | `8443/tcp`, default **8100** | yes | none |
+| **HTTP in the local network** | switch `http` | `8080/tcp`, default **8099** | no | none |
+| **HTTPS in the local network** | switch `https` | `8443/tcp`, default **8100** | yes | none |
 
-HTTP and HTTPS can be turned on separately or together. Both are off by
+HTTP and HTTPS can be switched on separately or together. Both are off by
 default. The sidebar is all you need for daily use.
 
 **Changing a port:** Configuration tab → section **Network** → enter any free
 port number at the desired entry → Save. An empty field closes the port
-completely. The option decides whether anything answers there; the network
+completely. The switch decides whether anything answers there; the network
 field decides on which number.
 
 Example: `http` on and under Network `8080/tcp` = `8099` gives
@@ -102,24 +107,24 @@ Example: `http` on and under Network `8080/tcp` = `8099` gives
 **HTTPS certificate:** the add-on reads certificate and key from the `/ssl`
 folder of Home Assistant, by default `fullchain.pem` and `privkey.pem`. This
 is where e.g. the Let's Encrypt and DuckDNS add-ons put them. Other file names
-are set with the options `zertifikat` and `schluessel`. If the files are
-missing, the add-on creates a **self-signed certificate** once. The
-connection is then encrypted, but the browser warns on the first visit.
+are set with the options `certificate` and `certificate_key`. If the files are
+missing, the add-on creates a **self-signed certificate** once. The connection
+is then encrypted, but the browser warns on the first visit.
 
 **Security:** HTTP and HTTPS in the local network have **no password**, HTTPS
 only encrypts. So never set up a port forwarding in your router. For access on
 the go there is the sidebar in the Home Assistant app. Deleting, import and
-export are only possible through the sidebar by default
-(`admin_nur_ueber_ingress`). Websites you visit in the browser cannot teach
-the add-on anything (origin check). Images are limited to 10 MB and 25
-megapixels, model imports to 300 MB.
+export are only possible through the sidebar by default (switch
+`admin_ingress_only`). Websites you visit in the browser cannot teach the
+add-on anything (origin check). Images are limited to 10 MB and 25 megapixels,
+model imports to 300 MB.
 
 ## Training
 
-**Sidebar → Wasseruhr → Training** shows the latest reading with the wheels
-drawn in (green = certain, red = uncertain). If it is wrong or uncertain:
-enter the correct meter reading → **Learn from this image**. **Read camera
-now** fetches a fresh image right away.
+**Sidebar → Wasseruhr-CV → Training** shows the latest reading with the
+wheels drawn in (green = certain, red = uncertain). If it is wrong or
+uncertain: enter the correct meter reading → **Learn from this image**.
+**Read camera now** fetches a fresh image right away.
 
 Teaching from scratch: repeat until the training page shows "all digits 0–9
 learned". The quickest way is via the rear wheels, which turn all the time.
@@ -128,7 +133,7 @@ enter the one that fills more of the window.
 
 ## Admin page
 
-**Sidebar → Wasseruhr → Admin**:
+**Sidebar → Wasseruhr-CV → Admin**:
 
 - **Auto-reading**: status, current meter reading, last check, set the meter
   reading by hand, "Read & send now".
@@ -144,27 +149,29 @@ enter the one that fills more of the window.
 
 ## Options
 
+Switches are toggles: on or off.
+
 | Option | Default | Meaning |
 |---|---|---|
-| `kamera` | – | camera entity that is read (easier: select it on the admin page) |
-| `intervall_minuten` | 5 | interval of automatic reading, 0 = off |
-| `sensor` | `sensor.wasseruhr_cv_zaehlerstand` | target for the meter reading, created or overwritten; empty = no sensor |
+| `camera` | – | camera entity that is read (easier: select it on the admin page) |
+| `interval_minutes` | 5 | interval of automatic reading, 0 = off |
+| `sensor` | `sensor.wasseruhr_cv_meter_reading` | target for the meter reading, created or overwritten; empty = no sensor |
 | `input_number` | – | optionally also an existing number helper |
-| `max_m3_pro_stunde` | 3 | faster increase = reading error |
-| `toleranz_m3` | 0.002 | ignore small backward deviations |
-| `alle_ziffern_gelernt` | on | only write once 0–9 are all learned |
+| `max_m3_per_hour` | 3 | faster increase = reading error |
+| `tolerance_m3` | 0.002 | ignore small backward deviations |
+| `require_all_digits` | on | only write once 0–9 are all learned |
 | `http` | off | HTTP in the local network, port under Network (`8080/tcp`) |
 | `https` | off | HTTPS in the local network, port under Network (`8443/tcp`) |
-| `zertifikat` | `fullchain.pem` | certificate in `/ssl` for HTTPS |
-| `schluessel` | `privkey.pem` | key in `/ssl` for HTTPS |
-| `lerneffekt` | on | on: what is learned becomes a template right away. off: templates frozen |
+| `certificate` | `fullchain.pem` | certificate in `/ssl` for HTTPS |
+| `certificate_key` | `privkey.pem` | key in `/ssl` for HTTPS |
+| `learning` | on | on: what is learned becomes a template right away; off: templates frozen |
 | `min_score` | 0.70 | minimum score of the best digit for "certain" |
-| `min_abstand` | 0.08 | minimum margin to the second-best digit |
-| `max_vorlagen_pro_ziffer` | 30 | older templates are dropped, training images stay |
-| `verschiebung` | 3 | search range of the template matching in px (±) |
+| `min_margin` | 0.08 | minimum margin to the second-best digit |
+| `max_templates_per_digit` | 30 | older templates are dropped, training images stay |
+| `shift` | 3 | search range of the template matching in px (±) |
 | `rois` | default | position of the wheels in the image, see below |
-| `admin_nur_ueber_ingress` | on | delete, import, export only through the sidebar |
-| `sprache` | auto | language: `auto`, `de` or `en` (see [Language](#language)) |
+| `admin_ingress_only` | on | delete, import, export only through the sidebar |
+| `language` | auto | `auto`, `en` or `de` (see Language above) |
 | `log_level` | INFO | DEBUG additionally shows skipped duplicates |
 
 Saving the configuration restarts the add-on.
@@ -202,19 +209,20 @@ images with the new ROIs on restart.
 | Add-on does not start, log: "Invalid configuration: …" | Correct the option, e.g. `rois` (valid JSON) or ports used twice |
 | Add-on does not start: port already in use | Enter a different port number under Network or clear the field |
 | Auto-reading: "error – … HTTP 404 (unknown entity)" | Camera entity misspelled: select it again on the admin page |
-| Add-on does not start: "KAMERA='…': expected an entity like camera.water_meter" | Enter the entity ID under `kamera`, not the display name – or clear the field and select it on the admin page |
-| Camera selection: "Could not save the configuration …" | Enter the displayed entity ID under `kamera` on the Configuration tab |
+| Add-on does not start: "CAMERA='…': expected an entity like camera.water_meter" | Enter the entity ID under `camera`, not the display name – or clear the field and select it on the admin page |
+| Camera selection: "Could not save the configuration …" | Enter the displayed entity ID under `camera` on the Configuration tab |
 | Auto-reading: "error – … HTTP 500 (camera returns no image)" | Camera currently offline |
 | Auto-reading: "rejected – uncertain …" | Check the image on the training page and train it |
 | Auto-reading: permanently "lower than the previous reading" | Set the meter reading by hand on the admin page |
 | Admin page shows "input_number… does not exist in Home Assistant" | Create the helper (Settings → Devices & services → Helpers → Number) or clear the option `input_number` |
-| Admin page shows "Sending failed: input_number…" | Maximum or step of the helper do not fit (maximum ≥ 100000, step 0.001) |
-| `http://<ha>:8099/` not reachable | Turn on the option `http` and check the port under Network |
-| HTTPS: browser warns about the certificate | Self-signed certificate. Put your own in `/ssl` (options `zertifikat`, `schluessel`) |
+| Admin page shows "Sending: failed: input_number…" | Maximum or step of the helper do not fit (maximum ≥ 100000, step 0.001) |
+| `http://<ha>:8099/` not reachable | Switch on `http` and check the port under Network |
+| HTTPS: browser warns about the certificate | Self-signed certificate. Put your own in `/ssl` (options `certificate`, `certificate_key`) |
 | "ROI of wheel … is outside the image" | The camera delivers a different resolution: adjust `rois` |
 | Request answers 403 "Request from a foreign website rejected" | A website sent something to the add-on in your browser. Open the training page directly via its own address |
-| `/admin` answers 403 in the local network | Intended: use the admin page through the sidebar (option `admin_nur_ueber_ingress`) |
-| Pages in the wrong language | Use the DE / EN switch at the top right, or set the option `sprache` |
+| `/admin` answers 403 in the local network | Intended: use the admin page through the sidebar (switch `admin_ingress_only`) |
+| Pages in the wrong language | Use the EN / DE switch at the top right, or set the option `language` |
+| Automations used the attributes `grund` or `status: übernommen` (version 1.x) | Since 2.0 language-neutral: attribute `reason`, `status: accepted` (see the changelog) |
 
 ---
 
@@ -223,18 +231,19 @@ images with the new ROIs on restart.
 Liest das Rollenzählwerk einer Wasseruhr per Kamera und klassischem Computer
 Vision ab (OpenCV Template Matching, kein LLM, keine Cloud) und schreibt den
 geprüften Zählerstand nach Home Assistant. Das Add-on arbeitet eigenständig, es
-braucht keine weiteren Werkzeuge.
+braucht keine weiteren Werkzeuge. Optionen und Namen sind englisch, übersetzt
+sind die Texte.
 
 ## Einrichtung
 
 1. **Starten:** Im Reiter Info „In der Seitenleiste anzeigen“ und „Watchdog“
-   einschalten → **Starten**. In der Seitenleiste erscheint **Wasseruhr**.
-2. **Kamera auswählen:** Seitenleiste → Wasseruhr → **Verwaltung** → Karte
+   einschalten → **Starten**. In der Seitenleiste erscheint **Wasseruhr-CV**.
+2. **Kamera auswählen:** Seitenleiste → Wasseruhr-CV → **Verwaltung** → Karte
    Automatik → Kamera aus der Liste wählen. Das Vorschaubild zeigt, ob es die
    richtige ist → **Übernehmen**. Das Add-on speichert die Wahl in seiner
    Konfiguration und startet neu. Alternativ im Reiter Konfiguration die
-   Entitäts-ID bei `kamera` eintragen, z. B. `camera.wasseruhr`.
-3. **Bild prüfen:** Seitenleiste → Wasseruhr → **Kamera jetzt ablesen**. Im
+   Entitäts-ID bei `camera` eintragen, z. B. `camera.wasseruhr`.
+3. **Bild prüfen:** Seitenleiste → Wasseruhr-CV → **Kamera jetzt ablesen**. Im
    Bild sind die Rollen als Rechtecke eingezeichnet, darunter stehen die Ziffern
    so, wie das Add-on sie sieht. Jede Ziffer muss vollständig und mittig zu
    sehen sein, sonst die Option `rois` setzen (siehe ROIs unten).
@@ -244,31 +253,36 @@ braucht keine weiteren Werkzeuge.
    zurücksetzen** und auf der Lernseite neu anlernen (siehe Nachlernen unten)
    oder ein eigenes Modell als ZIP importieren.
 5. **Fertig.** Ab jetzt liest das Add-on alle 5 Minuten ab und schreibt den
-   Zählerstand in den Sensor `sensor.wasseruhr_cv_zaehlerstand`.
+   Zählerstand in den Sensor `sensor.wasseruhr_cv_meter_reading`.
 
 **Energie-Dashboard:** Einstellungen → Dashboards → Energie → Wasserverbrauch
-hinzufügen → `sensor.wasseruhr_cv_zaehlerstand` auswählen. Der Sensor hat die
+hinzufügen → `sensor.wasseruhr_cv_meter_reading` auswählen. Der Sensor hat die
 Einheit m³, die Geräteklasse Wasser und ist fortlaufend steigend.
+
+**Update von Version 1.x:** Optionen, Daten und der bestätigte Zählerstand
+werden automatisch übernommen. Eine Installation, die in den alten Sensor
+`sensor.wasseruhr_cv_zaehlerstand` geschrieben hat, schreibt weiter dorthin,
+damit der Verlauf im Energie-Dashboard weiterläuft.
 
 ## Sprache
 
 Lernseite, Verwaltung und alle Meldungen gibt es auf **Deutsch und Englisch**.
-Die Seiten folgen der Sprache des Browsers; der Umschalter **DE / EN** oben
+Die Seiten folgen der Sprache des Browsers; der Umschalter **EN / DE** oben
 rechts auf jeder Seite wechselt sie und merkt sich die Wahl. Protokoll und
 Sensor (Name und Begründung) folgen der Sprache von Home Assistant. Die Option
-`sprache` legt eine Sprache für alles fest: `auto` (Standard), `de` oder `en`.
+`language` legt eine Sprache für alles fest: `auto` (Standard), `en` oder `de`.
 
 ## Automatische Ablesung
 
-Alle `intervall_minuten` holt das Add-on das Bild der Kamera, liest es ab und
+Alle `interval_minutes` holt das Add-on das Bild der Kamera, liest es ab und
 prüft den Wert. Geschrieben wird nur, was **sicher und plausibel** ist:
 
 | Prüfung | Ergebnis, wenn sie nicht passt |
 |---|---|
-| Jede Rolle eindeutig erkannt (`min_score`, `min_abstand`) | verworfen: „unsicher …“ mit den betroffenen Rollen |
-| Für jede Ziffer 0–9 gibt es eine Vorlage (`alle_ziffern_gelernt`) | verworfen: „noch keine Vorlagen für Ziffer …“ |
-| Der Zähler läuft nur vorwärts | verworfen: „kleiner als der bisherige Stand“ (Abweichungen bis `toleranz_m3` werden still ignoriert) |
-| Höchstens `max_m3_pro_stunde` seit der letzten Bestätigung | verworfen: „… ist unplausibel“ |
+| Jede Rolle eindeutig erkannt (`min_score`, `min_margin`) | verworfen: „unsicher …“ mit den betroffenen Rollen |
+| Für jede Ziffer 0–9 gibt es eine Vorlage (Schalter `require_all_digits`) | verworfen: „noch keine Vorlagen für Ziffer …“ |
+| Der Zähler läuft nur vorwärts | verworfen: „kleiner als der bisherige Stand“ (Abweichungen bis `tolerance_m3` werden still ignoriert) |
+| Höchstens `max_m3_per_hour` seit der letzten Bestätigung | verworfen: „… ist unplausibel“ |
 
 Der erste sichere Wert wird ohne Vergleich übernommen. Danach wird mit dem
 zuletzt bestätigten Stand verglichen. Er bleibt bei Neustarts und Updates
@@ -276,7 +290,7 @@ erhalten.
 
 **Wohin geschrieben wird:**
 
-- **Sensor** (Option `sensor`, Standard `sensor.wasseruhr_cv_zaehlerstand`):
+- **Sensor** (Option `sensor`, Standard `sensor.wasseruhr_cv_meter_reading`):
   der Zählerstand in m³. Den Sensor muss es vorher nicht geben, das Add-on
   legt ihn an. Trägst du den Namen eines **vorhandenen** Sensors ein, wird
   dessen Wert überschrieben, z. B. um einen bisherigen Sensor weiterzuführen.
@@ -306,16 +320,16 @@ aus und zeigt das Ergebnis. Den Verlauf zeigt auch der Reiter Protokoll.
 | Weg | Einschalten | Port | Verschlüsselt | Anmeldung |
 |---|---|---|---|---|
 | **Seitenleiste** (auch in der HA-App) | immer an | – | wie Home Assistant | Home-Assistant-Benutzer |
-| **HTTP im Heimnetz** | Option `http` | `8080/tcp`, Standard **8099** | nein | keine |
-| **HTTPS im Heimnetz** | Option `https` | `8443/tcp`, Standard **8100** | ja | keine |
+| **HTTP im Heimnetz** | Schalter `http` | `8080/tcp`, Standard **8099** | nein | keine |
+| **HTTPS im Heimnetz** | Schalter `https` | `8443/tcp`, Standard **8100** | ja | keine |
 
 HTTP und HTTPS lassen sich einzeln oder zusammen einschalten. Beide sind
 standardmäßig aus. Für die Bedienung genügt die Seitenleiste.
 
 **Port ändern:** Reiter Konfiguration → Abschnitt **Netzwerk** → beim
 gewünschten Eintrag eine beliebige freie Port-Nummer eintragen → Speichern. Ein
-leeres Feld schließt den Port ganz. Die Option schaltet, ob dort etwas antwortet;
-das Netzwerk-Feld legt fest, unter welcher Nummer.
+leeres Feld schließt den Port ganz. Der Schalter legt fest, ob dort etwas
+antwortet; das Netzwerk-Feld, unter welcher Nummer.
 
 Beispiel: `http` an und unter Netzwerk `8080/tcp` = `8099` ergibt
 `http://<IP-von-Home-Assistant>:8099/`.
@@ -323,21 +337,22 @@ Beispiel: `http` an und unter Netzwerk `8080/tcp` = `8099` ergibt
 **HTTPS-Zertifikat:** Das Add-on liest Zertifikat und Schlüssel aus dem Ordner
 `/ssl` von Home Assistant, standardmäßig `fullchain.pem` und `privkey.pem`. So
 legen sie z. B. die Add-ons Let's Encrypt und DuckDNS ab. Andere Dateinamen
-stellst du mit den Optionen `zertifikat` und `schluessel` ein. Fehlen die
-Dateien, erzeugt das Add-on einmalig ein **selbstsigniertes Zertifikat**. Die
-Verbindung ist damit verschlüsselt, der Browser warnt aber beim ersten Aufruf.
+stellst du mit den Optionen `certificate` und `certificate_key` ein. Fehlen
+die Dateien, erzeugt das Add-on einmalig ein **selbstsigniertes Zertifikat**.
+Die Verbindung ist damit verschlüsselt, der Browser warnt aber beim ersten
+Aufruf.
 
 **Sicherheit:** HTTP und HTTPS im Heimnetz haben **kein Passwort**, HTTPS
 verschlüsselt nur. Deshalb nie eine Portfreigabe im Router einrichten. Für den
 Zugriff von unterwegs gibt es die Seitenleiste in der Home-Assistant-App.
 Löschen, Import und Export sind standardmäßig nur über die Seitenleiste möglich
-(`admin_nur_ueber_ingress`). Webseiten, die du im Browser besuchst, können dem
-Add-on nichts beibringen (Ursprungsprüfung). Bilder sind auf 10 MB und
+(Schalter `admin_ingress_only`). Webseiten, die du im Browser besuchst, können
+dem Add-on nichts beibringen (Ursprungsprüfung). Bilder sind auf 10 MB und
 25 Megapixel begrenzt, Modell-Importe auf 300 MB.
 
 ## Nachlernen
 
-**Seitenleiste → Wasseruhr → Nachlernen** zeigt die letzte Ablesung mit
+**Seitenleiste → Wasseruhr-CV → Nachlernen** zeigt die letzte Ablesung mit
 eingezeichneten Rollen (grün = sicher, rot = unsicher). Ist sie falsch oder
 unsicher: richtigen Zählerstand eintragen → **Mit diesem Bild lernen**.
 **Kamera jetzt ablesen** holt sofort ein frisches Bild.
@@ -349,7 +364,7 @@ Ziffern, die eintragen, die mehr vom Fenster einnimmt.
 
 ## Verwaltung
 
-**Seitenleiste → Wasseruhr → Verwaltung**:
+**Seitenleiste → Wasseruhr-CV → Verwaltung**:
 
 - **Automatik**: Status, aktueller Zählerstand, letzte Prüfung, Zählerstand
   von Hand setzen, „Jetzt ablesen & übertragen“.
@@ -365,27 +380,30 @@ Ziffern, die eintragen, die mehr vom Fenster einnimmt.
 
 ## Optionen
 
+Schalter sind Kippschalter: an oder aus. Die Namen in der Konfiguration zeigt
+Home Assistant auf Deutsch an, in der Tabelle stehen die Schlüssel.
+
 | Option | Standard | Bedeutung |
 |---|---|---|
-| `kamera` | – | Kamera-Entität, die abgelesen wird (bequemer: Auswahl in der Verwaltung) |
-| `intervall_minuten` | 5 | Abstand der automatischen Ablesung, 0 = aus |
-| `sensor` | `sensor.wasseruhr_cv_zaehlerstand` | Ziel für den Zählerstand, wird angelegt bzw. überschrieben; leer = kein Sensor |
+| `camera` | – | Kamera-Entität, die abgelesen wird (bequemer: Auswahl in der Verwaltung) |
+| `interval_minutes` | 5 | Abstand der automatischen Ablesung, 0 = aus |
+| `sensor` | `sensor.wasseruhr_cv_meter_reading` | Ziel für den Zählerstand, wird angelegt bzw. überschrieben; leer = kein Sensor |
 | `input_number` | – | optional zusätzlich ein vorhandener Zahlen-Helfer |
-| `max_m3_pro_stunde` | 3 | schnellerer Anstieg = Lesefehler |
-| `toleranz_m3` | 0.002 | kleine Rückwärts-Abweichung ignorieren |
-| `alle_ziffern_gelernt` | an | erst schreiben, wenn 0–9 alle gelernt sind |
+| `max_m3_per_hour` | 3 | schnellerer Anstieg = Lesefehler |
+| `tolerance_m3` | 0.002 | kleine Rückwärts-Abweichung ignorieren |
+| `require_all_digits` | an | erst schreiben, wenn 0–9 alle gelernt sind |
 | `http` | aus | HTTP im Heimnetz, Port unter Netzwerk (`8080/tcp`) |
 | `https` | aus | HTTPS im Heimnetz, Port unter Netzwerk (`8443/tcp`) |
-| `zertifikat` | `fullchain.pem` | Zertifikat in `/ssl` für HTTPS |
-| `schluessel` | `privkey.pem` | Schlüssel in `/ssl` für HTTPS |
-| `lerneffekt` | an | an: Gelerntes wird sofort zur Vorlage. aus: Vorlagen eingefroren |
+| `certificate` | `fullchain.pem` | Zertifikat in `/ssl` für HTTPS |
+| `certificate_key` | `privkey.pem` | Schlüssel in `/ssl` für HTTPS |
+| `learning` | an | an: Gelerntes wird sofort zur Vorlage; aus: Vorlagen eingefroren |
 | `min_score` | 0.70 | Mindest-Score der besten Ziffer für „sicher“ |
-| `min_abstand` | 0.08 | Mindestabstand zur zweitbesten Ziffer |
-| `max_vorlagen_pro_ziffer` | 30 | ältere Vorlagen fallen heraus, Lernbilder bleiben |
-| `verschiebung` | 3 | Suchbereich des Template Matchings in px (±) |
+| `min_margin` | 0.08 | Mindestabstand zur zweitbesten Ziffer |
+| `max_templates_per_digit` | 30 | ältere Vorlagen fallen heraus, Lernbilder bleiben |
+| `shift` | 3 | Suchbereich des Template Matchings in px (±) |
 | `rois` | Standard | Lage der Rollen im Bild, siehe unten |
-| `admin_nur_ueber_ingress` | an | Löschen, Import, Export nur über die Seitenleiste |
-| `sprache` | auto | Sprache: `auto`, `de` oder `en` (siehe Sprache oben) |
+| `admin_ingress_only` | an | Löschen, Import, Export nur über die Seitenleiste |
+| `language` | auto | `auto`, `en` oder `de` (siehe Sprache oben) |
 | `log_level` | INFO | DEBUG zeigt zusätzlich übersprungene Duplikate |
 
 Beim Speichern der Konfiguration startet das Add-on neu.
@@ -423,18 +441,18 @@ Lernbildern mit den neuen ROIs neu erzeugt.
 |---|---|
 | Add-on startet nicht, Protokoll: „Konfiguration ungültig: …“ | Option korrigieren, z. B. `rois` (gültiges JSON) oder doppelt vergebene Ports |
 | Add-on startet nicht: Port schon belegt | Unter Netzwerk eine andere Port-Nummer eintragen oder das Feld leeren |
-| Automatik: „fehler – … HTTP 404 (Entität unbekannt)“ | Kamera-Entität falsch geschrieben: in der Verwaltung neu auswählen |
-| Add-on startet nicht: „KAMERA='…': erwartet eine Entität wie camera.wasseruhr“ | Bei `kamera` die Entitäts-ID eintragen, nicht den Anzeigenamen – oder das Feld leeren und in der Verwaltung auswählen |
-| Kamera-Auswahl: „Konnte die Konfiguration nicht speichern …“ | Die angezeigte Entitäts-ID im Reiter Konfiguration bei `kamera` eintragen |
-| Automatik: „fehler – … HTTP 500 (Kamera liefert kein Bild)“ | Kamera gerade offline |
+| Automatik: „Fehler – … HTTP 404 (Entität unbekannt)“ | Kamera-Entität falsch geschrieben: in der Verwaltung neu auswählen |
+| Add-on startet nicht: „CAMERA='…': erwartet eine Entität wie camera.wasseruhr“ | Bei `camera` die Entitäts-ID eintragen, nicht den Anzeigenamen – oder das Feld leeren und in der Verwaltung auswählen |
+| Kamera-Auswahl: „Konnte die Konfiguration nicht speichern …“ | Die angezeigte Entitäts-ID im Reiter Konfiguration bei `camera` eintragen |
+| Automatik: „Fehler – … HTTP 500 (Kamera liefert kein Bild)“ | Kamera gerade offline |
 | Automatik: „verworfen – unsicher …“ | Bild auf der Lernseite prüfen und nachlernen |
 | Automatik: dauerhaft „kleiner als der bisherige Stand“ | Zählerstand in der Verwaltung von Hand setzen |
 | Verwaltung zeigt „input_number… gibt es in Home Assistant nicht“ | Helfer anlegen (Einstellungen → Geräte & Dienste → Helfer → Nummer) oder Option `input_number` leeren |
-| Verwaltung zeigt „Übertragen fehlgeschlagen: input_number…“ | Maximum bzw. Schrittweite des Helfers passen nicht (Maximum ≥ 100000, Schritt 0.001) |
-| `http://<ha>:8099/` nicht erreichbar | Option `http` einschalten und unter Netzwerk den Port prüfen |
-| HTTPS: Browser warnt vor dem Zertifikat | Selbstsigniertes Zertifikat. Eigenes in `/ssl` ablegen (Optionen `zertifikat`, `schluessel`) |
+| Verwaltung zeigt „Übertragen: fehlgeschlagen: input_number…“ | Maximum bzw. Schrittweite des Helfers passen nicht (Maximum ≥ 100000, Schritt 0.001) |
+| `http://<ha>:8099/` nicht erreichbar | Schalter `http` einschalten und unter Netzwerk den Port prüfen |
+| HTTPS: Browser warnt vor dem Zertifikat | Selbstsigniertes Zertifikat. Eigenes in `/ssl` ablegen (Optionen `certificate`, `certificate_key`) |
 | „ROI der Rolle … liegt außerhalb des Bildes“ | Kamera liefert eine andere Auflösung: `rois` anpassen |
 | Anfrage antwortet 403 „von fremder Webseite abgelehnt“ | Eine Webseite hat im Browser an das Add-on geschickt. Die Lernseite direkt über ihre eigene Adresse öffnen |
-| `/admin` antwortet im Heimnetz 403 | So gewollt: Verwaltung über die Seitenleiste (Option `admin_nur_ueber_ingress`) |
-| Seiten in der falschen Sprache | Umschalter DE / EN oben rechts nutzen oder die Option `sprache` setzen |
-| Automationen prüften `status: übernommen` oder `grund` (vor 1.5.0) | Seit 1.5.0 sprachneutral: `status: accepted`, Attribut `reason` statt `grund` (siehe CHANGELOG) |
+| `/admin` antwortet im Heimnetz 403 | So gewollt: Verwaltung über die Seitenleiste (Schalter `admin_ingress_only`) |
+| Seiten in der falschen Sprache | Umschalter EN / DE oben rechts nutzen oder die Option `language` setzen |
+| Automationen nutzten die Attribute `grund` oder `status: übernommen` (Version 1.x) | Seit 2.0 sprachneutral: Attribut `reason`, `status: accepted` (siehe Changelog) |

@@ -1,16 +1,16 @@
-"""Gemeinsame Einstellungen: Die bestehenden Tests prüfen deutsche Meldungen.
+"""Shared settings.
 
-Die Sprache des Dienstes ist ein globaler Zustand (siehe app/sprache.py). Vor
-jedem Test wird sie auf Deutsch zurückgesetzt, damit kein Test vom vorigen
-abhängt. Englisch und die automatische Wahl prüft test_sprache.py."""
+The service language is global state (see app/i18n.py). Before every test it is
+reset to English, so no test depends on the one before. German and the
+automatic choice are tested in test_i18n.py."""
 
 import pytest
 
-from app import sprache
+from app import i18n
 
 
 @pytest.fixture(autouse=True)
-def deutsch():
-    sprache.einstellen("de")
+def english():
+    i18n.configure("en")
     yield
-    sprache.einstellen("de")
+    i18n.configure("en")

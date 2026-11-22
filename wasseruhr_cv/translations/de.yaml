@@ -1,11 +1,11 @@
 configuration:
-  kamera:
+  camera:
     name: Kamera
     description: >-
       Kamera-Entität, deren Bild abgelesen wird, z. B. camera.wasseruhr.
-      Bequemer: in der Seitenleiste unter Wasseruhr → Verwaltung aus einer
+      Bequemer: in der Seitenleiste unter Wasseruhr-CV → Verwaltung aus einer
       Liste mit Vorschaubild auswählen. Ohne Kamera keine automatische Ablesung.
-  intervall_minuten:
+  interval_minutes:
     name: Intervall (Minuten)
     description: >-
       So oft wird die Kamera automatisch abgelesen. 0 schaltet die automatische
@@ -22,42 +22,42 @@ configuration:
       Optional: zusätzlich einen Zahlen-Helfer setzen, z. B.
       input_number.wasserzaehler. Den Helfer muss es schon geben. Ein dort von
       Hand gesetzter Wert gilt als Korrektur des Zählerstands.
-  max_m3_pro_stunde:
+  max_m3_per_hour:
     name: Höchster Anstieg (m³ pro Stunde)
     description: >-
       Steigt der Wert schneller, gilt er als Lesefehler und wird verworfen
       (Standard 3).
-  toleranz_m3:
+  tolerance_m3:
     name: Toleranz (m³)
     description: >-
       Kleine Rückwärts-Abweichungen bis zu diesem Wert werden still ignoriert,
       z. B. wenn die letzte Rolle gerade dreht (Standard 0.002).
-  alle_ziffern_gelernt:
+  require_all_digits:
     name: Erst schreiben, wenn alle Ziffern gelernt sind
     description: >-
-      Solange für eine Ziffer 0–9 noch keine Vorlage existiert, wird nichts
-      geschrieben. Eine nie gelernte Ziffer könnte sonst als ähnliche erkannt
+      An: Solange für eine Ziffer 0–9 noch keine Vorlage existiert, wird nichts
+      geschrieben, denn eine nie gelernte Ziffer könnte als ähnliche erkannt
       werden.
   http:
     name: HTTP im Heimnetz
     description: >-
-      Lernseite und API unverschlüsselt im Heimnetz anbieten. Port unter
+      An: Lernseite und API unverschlüsselt im Heimnetz anbieten. Port unter
       Netzwerk (Standard 8099). Ohne Passwort – nie im Router freigeben.
   https:
     name: HTTPS im Heimnetz
     description: >-
-      Lernseite und API verschlüsselt im Heimnetz anbieten. Port unter Netzwerk
-      (Standard 8100). Ohne Passwort – nie im Router freigeben.
-  zertifikat:
+      An: Lernseite und API verschlüsselt im Heimnetz anbieten. Port unter
+      Netzwerk (Standard 8100). Ohne Passwort – nie im Router freigeben.
+  certificate:
     name: HTTPS-Zertifikat
     description: >-
       Datei im Ordner /ssl (z. B. vom Let's-Encrypt-Add-on), Standard
       fullchain.pem. Fehlt sie, erzeugt das Add-on ein selbstsigniertes
       Zertifikat (der Browser warnt dann einmal).
-  schluessel:
+  certificate_key:
     name: HTTPS-Schlüssel
     description: Datei im Ordner /ssl, Standard privkey.pem.
-  lerneffekt:
+  learning:
     name: Lerneffekt
     description: >-
       An: Neue Lernbilder werden sofort zu Vorlagen, und beim Start werden alle
@@ -68,17 +68,17 @@ configuration:
     description: >-
       So gut muss die beste Ziffer passen, damit eine Rolle als sicher gilt
       (Standard 0.70).
-  min_abstand:
+  min_margin:
     name: Mindestabstand
     description: >-
       So viel besser als die zweitbeste muss die beste Ziffer passen
       (Standard 0.08).
-  max_vorlagen_pro_ziffer:
+  max_templates_per_digit:
     name: Vorlagen je Ziffer
     description: >-
       Höchstzahl gespeicherter Vorlagen pro Ziffer, die ältesten fallen heraus
       (Standard 30). Die Lernbilder selbst werden nie gelöscht.
-  verschiebung:
+  shift:
     name: Verschiebung
     description: Suchbereich des Template Matchings in Pixeln, ± (Standard 3).
   rois:
@@ -88,17 +88,17 @@ configuration:
       eine pro Rolle von links nach rechts. Leer lassen = Standard für das
       640×480-Bild. Mit Lerneffekt werden die Vorlagen beim Neustart aus den
       Lernbildern neu erzeugt.
-  admin_nur_ueber_ingress:
+  admin_ingress_only:
     name: Verwaltung nur über Home Assistant
     description: >-
-      Löschen, Import und Export nur über die Seitenleiste, also nur für
+      An: Löschen, Import und Export nur über die Seitenleiste, also nur für
       angemeldete Benutzer – auch wenn HTTP oder HTTPS an ist.
-  sprache:
+  language:
     name: Sprache
     description: >-
       Sprache von Lernseite, Verwaltung, Meldungen, Protokoll und Sensor.
       auto: Webseiten in der Sprache des Browsers (auf der Seite umschaltbar),
-      Protokoll und Sensor in der Sprache von Home Assistant. de bzw. en legt
+      Protokoll und Sensor in der Sprache von Home Assistant. en bzw. de legt
       die Sprache überall fest.
   log_level:
     name: Log-Level

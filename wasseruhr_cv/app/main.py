@@ -1,4 +1,7 @@
-"""FastAPI-Webdienst: liest die Wasseruhr ab und lernt Ziffern-Vorlagen."""
+"""FastAPI web service: reads the water meter and learns digit templates.
+
+The API is English (/read, /learn, /read-camera). The German paths of version
+1.x (/ablesen, /lernen, /kamera-ablesen) keep working with their old answers."""
 
 from __future__ import annotations
 
@@ -15,42 +18,43 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, Response
 from starlette.concurrency import run_in_threadpool
 
-from . import __version__, debugbild, ha, kamera, lernseite, modell, schutz, sprache, verwaltung
-from .automatik import Automatik
-from .erkennung import (
-    BildFehler,
-    ZiffernErgebnis,
-    dekodiere_bild,
-    erkenne_ziffer,
-    ist_sicher,
-    schneide_ziffern,
-    zerlege_wert,
-    zusammensetzen,
+from . import __version__, admin, camera, debug_image, ha, i18n, model, security, training_page
+from .auto_reading import AutoReader
+from .config import DECIMALS, Config
+from .i18n import T, for_request, message
+from .image_archive import ImageArchive
+from .migration import migrate_data
+from .recognition import (
+    DigitResult,
+    ImageError,
+    combine,
+    cut_digits,
+    decode_image,
+    is_certain,
+    recognise_digit,
+    split_value,
 )
-from .konfig import NACHKOMMASTELLEN, Konfig
-from .lernbilder import LernbildArchiv
-from .sprache import T, aus_anfrage, meldung
-from .vorlagen import VorlagenSpeicher
+from .templates import TemplateStore
 
 log = logging.getLogger("wasseruhr")
 
-VERLAUF_LAENGE = 20  # so viele Ablesungen bleiben für Debug-Bild und Lernseite im Speicher
+HISTORY_LENGTH = 20  # readings kept in memory for the debug image and the training page
 
 
 @dataclass
-class Ablesung:
-    nr: int
-    zeit: datetime
-    daten: bytes  # Original-JPEG, damit genau dieses Bild gelernt werden kann
-    bild: np.ndarray
-    ziffern: list[np.ndarray]
-    ergebnisse: list[ZiffernErgebnis]
-    sicher_pro_rolle: list[bool]
-    wert: float | None
-    sicher: bool
+class Reading:
+    number: int
+    time: datetime
+    data: bytes  # original JPEG, so exactly this image can be learned
+    image: np.ndarray
+    digits: list[np.ndarray]
+    results: list[DigitResult]
+    certain_per_wheel: list[bool]
+    value: float | None
+    certain: bool
 
 
-def _logging_einrichten() -> None:
+def _setup_logging() -> None:
     if not logging.getLogger().handlers:
         logging.basicConfig(
             level=os.environ.get("LOG_LEVEL", "INFO").upper(),
@@ -58,243 +62,258 @@ def _logging_einrichten() -> None:
         )
 
 
-def create_app(konfig: Konfig | None = None) -> FastAPI:
-    _logging_einrichten()
-    konfig = konfig or Konfig.aus_umgebung()
-    sprache.einstellen(konfig.sprache)
-    speicher = VorlagenSpeicher(konfig.vorlagen_verzeichnis, konfig.max_vorlagen_pro_ziffer)
-    archiv = LernbildArchiv(konfig.lernbilder_verzeichnis)
-    verlauf: OrderedDict[int, Ablesung] = OrderedDict()
-    verlauf_lock = threading.Lock()
-    zaehler = [0]
-    lern_lock = threading.Lock()  # Archiv + Vorlagen in derselben Reihenfolge
+def create_app(config: Config | None = None) -> FastAPI:
+    _setup_logging()
+    config = config or Config.from_env()
+    i18n.configure(config.language)
+    migrate_data(config.data_dir)
+    store = TemplateStore(config.templates_dir, config.max_templates_per_digit)
+    archive = ImageArchive(config.images_dir)
+    history: OrderedDict[int, Reading] = OrderedDict()
+    history_lock = threading.Lock()
+    counter = [0]
+    learn_lock = threading.Lock()  # archive + templates in the same order
 
-    def _lernbilder_aus_archiv():
-        for e in archiv.eintraege():
+    def _training_from_archive():
+        for e in archive.entries():
             try:
-                soll = zerlege_wert(e.wert, konfig.anzahl_rollen, NACHKOMMASTELLEN)
-                ziffern = schneide_ziffern(dekodiere_bild(e.pfad.read_bytes()), konfig.rois)
-            except (ValueError, OSError) as ex:  # BildFehler ist ein ValueError
-                log.warning(T("log.lernbild_uebersprungen", name=e.pfad.name, fehler=ex))
+                digits = split_value(e.value, config.wheel_count, DECIMALS)
+                images = cut_digits(decode_image(e.path.read_bytes()), config.rois)
+            except (ValueError, OSError) as ex:  # ImageError is a ValueError
+                log.warning(T("log.image_skipped", name=e.path.name, error=ex))
                 continue
-            yield e.zeitstempel, soll, ziffern
+            yield e.timestamp, digits, images
 
-    def _neu_aufbauen() -> int:
-        """Vorlagen komplett aus dem Archiv neu erzeugen (Aufrufer hält lern_lock)."""
-        anzahl = speicher.neu_aufbauen(_lernbilder_aus_archiv())
-        log.info(T("log.neu_aufgebaut", n=anzahl, anzahl=speicher.anzahl_pro_ziffer()))
-        return anzahl
+    def _rebuild() -> int:
+        """Rebuild all templates from the archive (caller holds learn_lock)."""
+        count = store.rebuild(_training_from_archive())
+        log.info(T("log.rebuilt", n=count, counts=store.count_per_digit()))
+        return count
 
-    def _vorlagen_bereitstellen() -> None:
-        speicher.verzeichnis.mkdir(parents=True, exist_ok=True)
-        if konfig.modell_verzeichnis is not None:
-            modell.erstausstattung(konfig.modell_verzeichnis, konfig.daten_verzeichnis, archiv, speicher)
-        if not konfig.lerneffekt:
-            speicher.laden()
-            log.info(T("log.lerneffekt_aus"))
+    def _prepare_templates() -> None:
+        store.directory.mkdir(parents=True, exist_ok=True)
+        if config.model_dir is not None:
+            model.install_bundled(config.model_dir, config.data_dir, archive, store)
+        if not config.learning:
+            store.load()
+            log.info(T("log.learning_off"))
             return
-        if archiv.anzahl() == 0:
-            speicher.laden()
+        if archive.count() == 0:
+            store.load()
             return
-        anzahl = speicher.neu_aufbauen(_lernbilder_aus_archiv())
-        log.info(T("log.lerneffekt_an", n=anzahl, anzahl=speicher.anzahl_pro_ziffer()))
+        count = store.rebuild(_training_from_archive())
+        log.info(T("log.learning_on", n=count, counts=store.count_per_digit()))
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
-        # SPRACHE=auto: Protokoll und Sensor in der Sprache von HA (start.py fragt meist schon vorher)
-        if konfig.ha_token and not sprache.versucht():
-            ha.sprache_uebernehmen(konfig.ha_url, konfig.ha_token)
+        # LANGUAGE=auto: log and sensor in the language of HA (start.py usually asked already)
+        if config.ha_token and not i18n.asked():
+            ha.adopt_language(config.ha_url, config.ha_token)
         log.info(T(
-            "log.start", version=__version__, rollen=konfig.anzahl_rollen,
-            min_score=f"{konfig.min_score:.2f}", min_abstand=f"{konfig.min_abstand:.2f}",
-            max_vorlagen=konfig.max_vorlagen_pro_ziffer, verschiebung=konfig.verschiebung,
-            lerneffekt=T("ui.an" if konfig.lerneffekt else "ui.aus"), daten=konfig.daten_verzeichnis,
+            "log.start", version=__version__, wheels=config.wheel_count,
+            min_score=f"{config.min_score:.2f}", min_margin=f"{config.min_margin:.2f}",
+            max_templates=config.max_templates_per_digit, shift=config.shift,
+            learning=T("ui.on" if config.learning else "ui.off"), data=config.data_dir,
         ))
-        log.info(T("log.sprache", quelle=T(f"log.sprache.{sprache.quelle()}")))
-        kamera_text = konfig.kamera or T("log.keine")
+        log.info(T("log.language", source=T(f"log.language.{i18n.source()}")))
+        camera_text = config.camera or T("log.none")
         log.info(T(
-            "log.kamera",
-            kamera=kamera_text if konfig.ha_token else T("log.ohne_ha", kamera=kamera_text),
-            verwaltung=T("log.verwaltung_ingress" if konfig.admin_nur_ingress else "log.verwaltung_netz"),
+            "log.camera",
+            camera=camera_text if config.ha_token else T("log.without_ha", camera=camera_text),
+            admin=T("log.admin_ingress" if config.admin_ingress_only else "log.admin_network"),
         ))
-        _vorlagen_bereitstellen()
-        automatik.starten()
+        _prepare_templates()
+        auto_reader.start()
         yield
-        automatik.stoppen()
+        auto_reader.stop()
 
     app = FastAPI(title="Wasseruhr-CV", version=__version__, lifespan=lifespan)
-    schutz.einrichten(app)
-    sprache.einrichten(app)
-    app.state.konfig = konfig
-    app.state.speicher = speicher
-    app.state.archiv = archiv
+    security.setup(app)
+    i18n.setup(app)
+    app.state.config = config
+    app.state.store = store
+    app.state.archive = archive
 
-    def _ziffern_aus_body(daten: bytes) -> tuple[np.ndarray, list[np.ndarray]]:
+    def _digits_from_body(data: bytes) -> tuple[np.ndarray, list[np.ndarray]]:
         try:
-            bild = dekodiere_bild(daten)
-            return bild, schneide_ziffern(bild, konfig.rois)
-        except BildFehler as e:
-            raise HTTPException(status_code=400, detail=meldung(e)) from None
+            image = decode_image(data)
+            return image, cut_digits(image, config.rois)
+        except ImageError as e:
+            raise HTTPException(status_code=400, detail=message(e)) from None
 
-    # ---- POST /ablesen -------------------------------------------------------
+    # ---- POST /read ----------------------------------------------------------------
 
-    def _ablesen(daten: bytes) -> dict:
-        return _ablesen_mit_nr(daten)[1]
+    def _read(data: bytes) -> tuple[int, dict]:
+        image, digits = _digits_from_body(data)
+        templates = store.snapshot()
+        results = [recognise_digit(wheel, d, templates, config.shift) for wheel, d in enumerate(digits, start=1)]
+        certain_per_wheel = [is_certain(r, config.min_score, config.min_margin) for r in results]
+        certain = all(certain_per_wheel)
+        value = combine(results, DECIMALS)
+        missing = [d for d, t in templates.items() if not t]
 
-    def _ablesen_mit_nr(daten: bytes) -> tuple[int, dict]:
-        bild, ziffern = _ziffern_aus_body(daten)
-        vorlagen = speicher.momentaufnahme()
-        ergebnisse = [
-            erkenne_ziffer(rolle, z, vorlagen, konfig.verschiebung)
-            for rolle, z in enumerate(ziffern, start=1)
-        ]
-        sicher_pro_rolle = [ist_sicher(e, konfig.min_score, konfig.min_abstand) for e in ergebnisse]
-        sicher = all(sicher_pro_rolle)
-        wert = zusammensetzen(ergebnisse, NACHKOMMASTELLEN)
-        fehlende = [z for z, liste in vorlagen.items() if not liste]
-
-        with verlauf_lock:
-            zaehler[0] += 1
-            nr = zaehler[0]
-            verlauf[nr] = Ablesung(
-                nr, datetime.now(timezone.utc), daten, bild, ziffern, ergebnisse, sicher_pro_rolle, wert, sicher
+        with history_lock:
+            counter[0] += 1
+            number = counter[0]
+            history[number] = Reading(
+                number, datetime.now(timezone.utc), data, image, digits, results, certain_per_wheel, value, certain
             )
-            while len(verlauf) > VERLAUF_LAENGE:
-                verlauf.popitem(last=False)
+            while len(history) > HISTORY_LENGTH:
+                history.popitem(last=False)
 
         log.info(T(
-            "log.ablesen", nr=nr, wert="null" if wert is None else f"{wert:.3f}",
-            sicher=T("ui.ja" if sicher else "ui.nein"),
-            rollen=" ".join(_kurz(e, ok) for e, ok in zip(ergebnisse, sicher_pro_rolle)),
-            fehlend=T("log.fehlende_vorlagen", liste=str(fehlende)) if fehlende else "",
+            "log.read", n=number, value="null" if value is None else f"{value:.3f}",
+            certain=T("ui.yes" if certain else "ui.no"),
+            wheels=" ".join(_short(r, ok) for r, ok in zip(results, certain_per_wheel)),
+            missing=T("log.missing_templates", digits=str(missing)) if missing else "",
         ))
-        return nr, {
-            "wert": wert,
-            "sicher": sicher,
-            "ziffern": [e.als_dict() for e in ergebnisse],
-            "fehlende_vorlagen": fehlende,
+        return number, {
+            "value": value,
+            "certain": certain,
+            "digits": [r.as_dict() for r in results],
+            "missing_templates": missing,
         }
 
-    # Liest selbst in festen Abständen ab und schreibt nach Home Assistant (siehe automatik.py)
-    automatik = Automatik(konfig, lambda daten: _ablesen_mit_nr(daten))
-    app.state.automatik = automatik
+    # Reads by itself at fixed intervals and writes to Home Assistant (see auto_reading.py)
+    auto_reader = AutoReader(config, _read)
+    app.state.auto_reader = auto_reader
 
-    @app.post("/ablesen")
-    async def ablesen(request: Request) -> dict:
-        return await run_in_threadpool(_ablesen, await schutz.body_lesen(request, schutz.MAX_BILD_BYTES))
+    @app.post("/read")
+    async def read(request: Request) -> dict:
+        data = await security.read_body(request, security.MAX_IMAGE_BYTES)
+        return (await run_in_threadpool(_read, data))[1]
 
-    # ---- POST /kamera-ablesen ------------------------------------------------
+    # ---- POST /read-camera -------------------------------------------------------
 
-    def _kamera_ablesen() -> dict:
-        if not konfig.kamera:
-            raise HTTPException(status_code=400, detail=T("api.keine_kamera"))
-        if not konfig.ha_token:
-            raise HTTPException(status_code=400, detail=T("api.kein_ha"))
+    def _read_camera() -> dict:
+        if not config.camera:
+            raise HTTPException(status_code=400, detail=T("api.no_camera"))
+        if not config.ha_token:
+            raise HTTPException(status_code=400, detail=T("api.no_ha"))
         try:
-            daten = kamera.schnappschuss(konfig.ha_url, konfig.ha_token, konfig.kamera)
-        except kamera.KameraFehler as e:
-            raise HTTPException(status_code=502, detail=T("api.kamerabild_fehlt", fehler=e)) from None
-        nr, ergebnis = _ablesen_mit_nr(daten)
-        return {"nr": nr, **ergebnis}
+            data = camera.snapshot(config.ha_url, config.ha_token, config.camera)
+        except camera.CameraError as e:
+            raise HTTPException(status_code=502, detail=T("api.camera_failed", error=e)) from None
+        number, result = _read(data)
+        return {"reading": number, **result}
 
-    @app.post("/kamera-ablesen")
-    async def kamera_ablesen() -> dict:
-        """Holt das aktuelle Bild der eingestellten Kamera aus Home Assistant und liest es ab."""
-        return await run_in_threadpool(_kamera_ablesen)
+    @app.post("/read-camera")
+    async def read_camera() -> dict:
+        """Fetches the current image of the configured camera from Home Assistant and reads it."""
+        return await run_in_threadpool(_read_camera)
 
-    # ---- POST /lernen --------------------------------------------------------
+    # ---- POST /learn ---------------------------------------------------------------
 
-    def _ablesung(nr: int | None) -> Ablesung | None:
-        with verlauf_lock:
-            if nr is None:
-                return next(reversed(verlauf.values()), None)
-            return verlauf.get(nr)
+    def _reading(number: int | None) -> Reading | None:
+        with history_lock:
+            if number is None:
+                return next(reversed(history.values()), None)
+            return history.get(number)
 
-    def _lernen(daten: bytes, wert_text: str, ablesung: int | None) -> dict:
+    def _learn(data: bytes, value_text: str, reading: int | None) -> dict:
         try:
-            wert = float(wert_text.strip().replace(",", "."))
-            soll = zerlege_wert(wert, konfig.anzahl_rollen, NACHKOMMASTELLEN)
+            value = float(value_text.strip().replace(",", "."))
+            digits = split_value(value, config.wheel_count, DECIMALS)
         except ValueError as e:
-            raise HTTPException(status_code=400, detail=T("api.wert_ungueltig", wert=repr(wert_text), fehler=e)) from None
-        aus_verlauf = not daten and ablesung is not None
-        if aus_verlauf:
-            a = _ablesung(ablesung)
-            if a is None:
-                raise HTTPException(status_code=404, detail=T("api.ablesung_neu_laden", nr=ablesung))
-            daten = a.daten
-        _bild, ziffern = _ziffern_aus_body(daten)  # erst prüfen, dann archivieren
-        with lern_lock:
-            zeitstempel = archiv.speichern(daten, wert)
-            gespeichert = speicher.lernen(zeitstempel, soll, ziffern) if konfig.lerneffekt else 0
-        anzahl = speicher.anzahl_pro_ziffer()
+            raise HTTPException(status_code=400, detail=T("api.invalid_value", value=repr(value_text), error=e)) from None
+        from_history = not data and reading is not None
+        if from_history:
+            r = _reading(reading)
+            if r is None:
+                raise HTTPException(status_code=404, detail=T("api.reading_reload", n=reading))
+            data = r.data
+        _image, images = _digits_from_body(data)  # check first, then archive
+        with learn_lock:
+            timestamp = archive.save(data, value)
+            saved = store.learn(timestamp, digits, images) if config.learning else 0
+        counts = store.count_per_digit()
         log.info(T(
-            "log.lernen", wert=f"{wert:.3f}", ziffern="".join(map(str, soll)), gespeichert=gespeichert,
-            zusatz="" if konfig.lerneffekt else T("log.nur_archiviert"), anzahl=anzahl,
+            "log.learn", value=f"{value:.3f}", digits="".join(map(str, digits)), saved=saved,
+            extra="" if config.learning else T("log.archived_only"), counts=counts,
         ))
-        if aus_verlauf:
-            _ablesen(daten)  # gleiches Bild sofort neu ablesen -> Lernseite zeigt den Effekt
-        return {"gespeichert": gespeichert, "vorlagen_pro_ziffer": anzahl}
+        if from_history:
+            _read(data)  # read the same image again right away -> the training page shows the effect
+        return {"saved": saved, "templates_per_digit": counts}
 
-    @app.post("/lernen")
-    async def lernen(
+    @app.post("/learn")
+    async def learn(
         request: Request,
-        wert: str = Query(..., description="Meter reading shown on the image, e.g. 506.388"),
-        ablesung: int | None = Query(
+        value: str = Query(..., description="Meter reading shown on the image, e.g. 506.388"),
+        reading: int | None = Query(
             None, description="Without body: learn the image of this reading (number from the training page)"
         ),
     ) -> dict:
-        daten = await schutz.body_lesen(request, schutz.MAX_BILD_BYTES)
-        return await run_in_threadpool(_lernen, daten, wert, ablesung)
+        data = await security.read_body(request, security.MAX_IMAGE_BYTES)
+        return await run_in_threadpool(_learn, data, value, reading)
 
-    # ---- GET /status, /debug.png, /health ----------------------------------
+    # ---- Version 1.x paths: German parameters and answers ----------------------------
+
+    @app.post("/ablesen", include_in_schema=False)
+    async def legacy_read(request: Request) -> dict:
+        data = await security.read_body(request, security.MAX_IMAGE_BYTES)
+        return _legacy_reading((await run_in_threadpool(_read, data))[1])
+
+    @app.post("/kamera-ablesen", include_in_schema=False)
+    async def legacy_read_camera() -> dict:
+        result = await run_in_threadpool(_read_camera)
+        return {"nr": result["reading"], **_legacy_reading(result)}
+
+    @app.post("/lernen", include_in_schema=False)
+    async def legacy_learn(request: Request, wert: str = Query(...), ablesung: int | None = Query(None)) -> dict:
+        data = await security.read_body(request, security.MAX_IMAGE_BYTES)
+        result = await run_in_threadpool(_learn, data, wert, ablesung)
+        return {"gespeichert": result["saved"], "vorlagen_pro_ziffer": result["templates_per_digit"]}
+
+    # ---- GET /status, /debug.png, /health ----------------------------------------
 
     @app.get("/status")
     def status() -> dict:
         return {
-            "vorlagen_pro_ziffer": speicher.anzahl_pro_ziffer(),
-            "fehlende_vorlagen": speicher.fehlende_ziffern(),
-            "lerneffekt": konfig.lerneffekt,
-            "lernbilder": archiv.anzahl(),
-            "zaehlerstand": automatik.zustand()["zaehlerstand"],
+            "templates_per_digit": store.count_per_digit(),
+            "missing_templates": store.missing_digits(),
+            "learning": config.learning,
+            "training_images": archive.count(),
+            "meter_reading": auto_reader.state()["meter_reading"],
         }
 
     @app.get("/debug.png")
     def debug_png(
         request: Request,
-        letztes: int = Query(1, description="1 = image of the latest /ablesen call"),
-        nr: int | None = Query(None, description="a specific reading instead"),
+        reading: int | None = Query(None, description="a specific reading instead of the latest"),
+        nr: int | None = Query(None, include_in_schema=False),  # version 1.x
     ) -> Response:
-        a = _ablesung(nr)
-        if a is None:
+        number = reading if reading is not None else nr
+        r = _reading(number)
+        if r is None:
             raise HTTPException(
                 status_code=404,
-                detail=T("api.noch_keine_ablesung") if nr is None else T("api.ablesung_weg", nr=nr),
+                detail=T("api.no_reading_yet") if number is None else T("api.reading_gone", n=number),
             )
-        png = debugbild.zeichne(
-            a.bild, konfig.rois, a.ziffern, a.ergebnisse, a.sicher_pro_rolle, a.wert, a.sicher,
-            sprache=aus_anfrage(request),
+        png = debug_image.draw(
+            r.image, config.rois, r.digits, r.results, r.certain_per_wheel, r.value, r.certain,
+            language=for_request(request),
         )
         return Response(content=png, media_type="image/png", headers={"Cache-Control": "no-store"})
 
     @app.get("/", response_class=HTMLResponse)
-    def startseite(request: Request, nr: int | None = None) -> HTMLResponse:
-        a = _ablesung(nr) or _ablesung(None)
-        neueste = _ablesung(None)
+    def home(request: Request, reading: int | None = None, nr: int | None = None) -> HTMLResponse:
+        r = _reading(reading if reading is not None else nr) or _reading(None)
+        latest = _reading(None)
         return HTMLResponse(
-            lernseite.rendern(
-                lerneffekt=konfig.lerneffekt,
-                lernbilder=archiv.anzahl(),
-                fehlende=speicher.fehlende_ziffern(),
-                nr=a.nr if a else None,
-                zeit=a.zeit if a else None,
-                wert=a.wert if a else None,
-                sicher=a.sicher if a else False,
-                ist_neueste=a is neueste,
-                kamera=bool(konfig.kamera and konfig.ha_token),
-                automatik_intervall=konfig.intervall_minuten if automatik.aktiv else None,
-                zaehlerstand=automatik.zustand()["zaehlerstand"],
-                verwaltung=verwaltung.verwaltung_erlaubt(konfig, request),
-                sprache=aus_anfrage(request),
+            training_page.render(
+                learning=config.learning,
+                training_images=archive.count(),
+                missing=store.missing_digits(),
+                reading=r.number if r else None,
+                time=r.time if r else None,
+                value=r.value if r else None,
+                certain=r.certain if r else False,
+                is_latest=r is latest,
+                camera=bool(config.camera and config.ha_token),
+                interval=config.interval_minutes if auto_reader.active else None,
+                meter_reading=auto_reader.state()["meter_reading"],
+                admin=admin.admin_allowed(config, request),
+                language=for_request(request),
             ),
             headers={"Cache-Control": "no-store"},
         )
@@ -303,23 +322,23 @@ def create_app(konfig: Konfig | None = None) -> FastAPI:
     def health() -> dict:
         return {"ok": True}
 
-    # ---- /admin: Verwaltung ----------------------------------------------------
+    # ---- /admin ----------------------------------------------------------------------
 
-    def _ablesungen() -> list[Ablesung]:
-        with verlauf_lock:
-            return list(reversed(verlauf.values()))
+    def _readings() -> list[Reading]:
+        with history_lock:
+            return list(reversed(history.values()))
 
     app.include_router(
-        verwaltung.router(
-            verwaltung.Kontext(
-                konfig=konfig,
-                speicher=speicher,
-                archiv=archiv,
-                lern_lock=lern_lock,
-                neu_aufbauen=_neu_aufbauen,
-                ablesungen=_ablesungen,
+        admin.router(
+            admin.Context(
+                config=config,
+                store=store,
+                archive=archive,
+                learn_lock=learn_lock,
+                rebuild=_rebuild,
+                readings=_readings,
                 version=__version__,
-                automatik=automatik,
+                auto_reader=auto_reader,
             )
         )
     )
@@ -327,11 +346,25 @@ def create_app(konfig: Konfig | None = None) -> FastAPI:
     return app
 
 
-def _kurz(e: ZiffernErgebnis, ok: bool) -> str:
-    if e.ziffer is None:
-        return f"r{e.rolle}=?"
-    zweite = "" if e.zweitbeste is None else f"/{e.zweitbeste}:{e.score2:.2f}"
-    return f"r{e.rolle}={e.ziffer}({e.score:.2f}{zweite}){'' if ok else '!'}"
+def _legacy_reading(result: dict) -> dict:
+    """Answer of /read in the format of version 1.x."""
+    return {
+        "wert": result["value"],
+        "sicher": result["certain"],
+        "ziffern": [
+            {"rolle": d["wheel"], "ziffer": d["digit"], "score": d["score"],
+             "zweitbeste": d["second"], "score2": d["second_score"]}
+            for d in result["digits"]
+        ],
+        "fehlende_vorlagen": result["missing_templates"],
+    }
+
+
+def _short(r: DigitResult, ok: bool) -> str:
+    if r.digit is None:
+        return f"r{r.wheel}=?"
+    second = "" if r.second is None else f"/{r.second}:{r.second_score:.2f}"
+    return f"r{r.wheel}={r.digit}({r.score:.2f}{second}){'' if ok else '!'}"
 
 
 app = create_app()

@@ -1,12 +1,12 @@
-"""Zugriff auf die REST-API von Home Assistant.
+"""Access to the Home Assistant REST API.
 
-Im Add-on läuft das über den Supervisor-Proxy http://supervisor/core/api mit dem
-SUPERVISOR_TOKEN, außerhalb mit HA_URL (z. B. http://homeassistant.local:8123/api)
-und einem langlebigen Zugriffstoken in HA_TOKEN.
+In the add-on this goes through the Supervisor proxy http://supervisor/core/api
+with the SUPERVISOR_TOKEN, outside with HA_URL (e.g.
+http://homeassistant.local:8123/api) and a long-lived access token in HA_TOKEN.
 
-Der Token hat in Home Assistant weitreichende Rechte. Deshalb: nur http(s),
-keine Weiterleitungen (urllib würde den Authorization-Header sonst an das neue
-Ziel mitschicken) und Größenlimits für Antworten."""
+The token has far-reaching rights in Home Assistant. Therefore: http(s) only,
+no redirects (urllib would otherwise send the Authorization header to the new
+destination) and size limits for responses."""
 
 from __future__ import annotations
 
@@ -15,123 +15,123 @@ import urllib.error
 import urllib.request
 from urllib.parse import quote, urlsplit
 
-from . import sprache
-from .sprache import T
+from . import i18n
+from .i18n import T
 
 TIMEOUT_S = 20
-SPRACHE_TIMEOUT_S = 5  # beim Start nicht lange auf Home Assistant warten
-MAX_ANTWORT_BYTES = 1024 * 1024
+LANGUAGE_TIMEOUT_S = 5  # do not wait long for Home Assistant at start-up
+MAX_RESPONSE_BYTES = 1024 * 1024
 
 
-class HAFehler(RuntimeError):
-    def __init__(self, meldung: str, code: int | None = None):
-        super().__init__(meldung)
+class HAError(RuntimeError):
+    def __init__(self, message, code: int | None = None):
+        super().__init__(message)
         self.code = code
 
 
-class _KeineWeiterleitung(urllib.request.HTTPRedirectHandler):
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
-        raise HAFehler(T("ha.weiterleitung", code=code), code)
+        raise HAError(T("ha.redirect", code=code), code)
 
 
-_OEFFNER = urllib.request.build_opener(_KeineWeiterleitung)
+_OPENER = urllib.request.build_opener(_NoRedirect)
 
 
-def anfrage(
-    basis: str, token: str, methode: str, pfad: str, daten: dict | None = None,
-    max_bytes: int = MAX_ANTWORT_BYTES, timeout: float = TIMEOUT_S,
+def request(
+    base: str, token: str, method: str, path: str, data: dict | None = None,
+    max_bytes: int = MAX_RESPONSE_BYTES, timeout: float = TIMEOUT_S,
 ) -> bytes:
-    url = basis.rstrip("/") + pfad
+    url = base.rstrip("/") + path
     if urlsplit(url).scheme not in ("http", "https"):
-        raise HAFehler(T("ha.schema"))
-    kopf = {"Authorization": f"Bearer {token}"}
+        raise HAError(T("ha.scheme"))
+    headers = {"Authorization": f"Bearer {token}"}
     body = None
-    if daten is not None:
-        body = json.dumps(daten).encode()
-        kopf["Content-Type"] = "application/json"
-    req = urllib.request.Request(url, data=body, headers=kopf, method=methode)
+    if data is not None:
+        body = json.dumps(data).encode()
+        headers["Content-Type"] = "application/json"
+    req = urllib.request.Request(url, data=body, headers=headers, method=method)
     try:
-        with _OEFFNER.open(req, timeout=timeout) as antwort:  # noqa: S310 – Schema oben geprüft
-            inhalt = antwort.read(max_bytes + 1)
-    except HAFehler:
+        with _OPENER.open(req, timeout=timeout) as response:  # noqa: S310 – scheme checked above
+            content = response.read(max_bytes + 1)
+    except HAError:
         raise
     except urllib.error.HTTPError as e:
-        raise HAFehler(f"HTTP {e.code} ({e.reason})", e.code) from None
+        raise HAError(f"HTTP {e.code} ({e.reason})", e.code) from None
     except (urllib.error.URLError, TimeoutError, OSError) as e:
-        raise HAFehler(T("ha.nicht_erreichbar", grund=getattr(e, "reason", e))) from None
-    if len(inhalt) > max_bytes:
-        raise HAFehler(T("ha.zu_gross", mb=max_bytes // (1024 * 1024)))
-    return inhalt
+        raise HAError(T("ha.unreachable", reason=getattr(e, "reason", e))) from None
+    if len(content) > max_bytes:
+        raise HAError(T("ha.too_large", mb=max_bytes // (1024 * 1024)))
+    return content
 
 
-def _entitaet(entity_id: str) -> str:
+def _entity(entity_id: str) -> str:
     return quote(entity_id, safe="._")
 
 
-def zustand(basis: str, token: str, entity_id: str) -> dict | None:
-    """Aktueller Zustand einer Entität, None wenn es sie nicht gibt."""
+def state(base: str, token: str, entity_id: str) -> dict | None:
+    """Current state of an entity, None if it does not exist."""
     try:
-        return json.loads(anfrage(basis, token, "GET", f"/states/{_entitaet(entity_id)}"))
-    except HAFehler as e:
+        return json.loads(request(base, token, "GET", f"/states/{_entity(entity_id)}"))
+    except HAError as e:
         if e.code == 404:
             return None
         raise
 
 
-def zustand_setzen(basis: str, token: str, entity_id: str, state: str, attribute: dict) -> None:
-    anfrage(basis, token, "POST", f"/states/{_entitaet(entity_id)}", {"state": state, "attributes": attribute})
+def set_state(base: str, token: str, entity_id: str, value: str, attributes: dict) -> None:
+    request(base, token, "POST", f"/states/{_entity(entity_id)}", {"state": value, "attributes": attributes})
 
 
-def dienst(basis: str, token: str, domain: str, service: str, daten: dict) -> None:
-    anfrage(basis, token, "POST", f"/services/{_entitaet(domain)}/{_entitaet(service)}", daten)
+def call_service(base: str, token: str, domain: str, service: str, data: dict) -> None:
+    request(base, token, "POST", f"/services/{_entity(domain)}/{_entity(service)}", data)
 
 
-def kameras(basis: str, token: str) -> list[dict]:
-    """Alle Kamera-Entitäten: [{entity_id, name, state}], nach Name sortiert."""
-    alle = json.loads(anfrage(basis, token, "GET", "/states", max_bytes=50 * 1024 * 1024))
-    liste = [
-        {"entity_id": z["entity_id"], "name": (z.get("attributes") or {}).get("friendly_name") or z["entity_id"],
-         "state": z.get("state")}
-        for z in alle if str(z.get("entity_id", "")).startswith("camera.")
+def cameras(base: str, token: str) -> list[dict]:
+    """All camera entities: [{entity_id, name, state}], sorted by name."""
+    states = json.loads(request(base, token, "GET", "/states", max_bytes=50 * 1024 * 1024))
+    found = [
+        {"entity_id": s["entity_id"], "name": (s.get("attributes") or {}).get("friendly_name") or s["entity_id"],
+         "state": s.get("state")}
+        for s in states if str(s.get("entity_id", "")).startswith("camera.")
     ]
-    return sorted(liste, key=lambda k: k["name"].lower())
+    return sorted(found, key=lambda c: c["name"].lower())
 
 
-def sprache_uebernehmen(basis: str, token: str) -> bool:
-    """Bei SPRACHE=auto die Sprache von Home Assistant übernehmen (GET /config).
-    True, wenn sie dabei feststand. Ist Home Assistant (noch) nicht erreichbar,
-    bleibt es beim Englischen, und der nächste Aufruf versucht es erneut."""
-    if not sprache.offen():
+def adopt_language(base: str, token: str) -> bool:
+    """With LANGUAGE=auto take over the language of Home Assistant (GET /config).
+    True if it was determined now. If Home Assistant cannot be reached (yet),
+    English stays and the next call tries again."""
+    if not i18n.pending():
         return False
-    sprache.versucht(merken=True)
+    i18n.asked(remember=True)
     try:
-        daten = json.loads(anfrage(basis, token, "GET", "/config", timeout=SPRACHE_TIMEOUT_S))
-    except HAFehler as e:
+        data = json.loads(request(base, token, "GET", "/config", timeout=LANGUAGE_TIMEOUT_S))
+    except HAError as e:
         if e.code is None or e.code >= 500:
             return False
-        daten = {}  # HA antwortet, verrät die Sprache aber nicht
+        data = {}  # Home Assistant answers but does not tell its language
     except ValueError:
-        daten = {}
-    sprache.von_home_assistant(daten.get("language") if isinstance(daten, dict) else None)
+        data = {}
+    i18n.from_home_assistant(data.get("language") if isinstance(data, dict) else None)
     return True
 
 
-# ---- Supervisor-API (nur im Add-on): eigene Optionen lesen/setzen, neu starten -----
+# ---- Supervisor API (add-on only): read/set own options, restart -----------------
 
-def _supervisor(basis: str, token: str, methode: str, pfad: str, daten: dict | None = None) -> dict:
-    antwort = json.loads(anfrage(basis, token, methode, pfad, daten) or b"{}")
-    if antwort.get("result") not in (None, "ok"):
-        raise HAFehler(f"Supervisor: {antwort.get('message') or antwort}")
-    return antwort.get("data") or {}
-
-
-def addon_optionen(basis: str, token: str) -> dict:
-    return _supervisor(basis, token, "GET", "/addons/self/info").get("options") or {}
+def _supervisor(base: str, token: str, method: str, path: str, data: dict | None = None) -> dict:
+    answer = json.loads(request(base, token, method, path, data) or b"{}")
+    if answer.get("result") not in (None, "ok"):
+        raise HAError(f"Supervisor: {answer.get('message') or answer}")
+    return answer.get("data") or {}
 
 
-def addon_optionen_setzen(basis: str, token: str, optionen: dict) -> None:
-    _supervisor(basis, token, "POST", "/addons/self/options", {"options": optionen})
+def addon_options(base: str, token: str) -> dict:
+    return _supervisor(base, token, "GET", "/addons/self/info").get("options") or {}
 
 
-def addon_neu_starten(basis: str, token: str) -> None:
-    _supervisor(basis, token, "POST", "/addons/self/restart")
+def set_addon_options(base: str, token: str, options: dict) -> None:
+    _supervisor(base, token, "POST", "/addons/self/options", {"options": options})
+
+
+def restart_addon(base: str, token: str) -> None:
+    _supervisor(base, token, "POST", "/addons/self/restart")

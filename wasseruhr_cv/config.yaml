@@ -1,7 +1,7 @@
 name: Wasseruhr-CV
-version: "1.5.0"
+version: "2.0.0"
 slug: wasseruhr_cv
-# Die Beschreibung im Add-on-Store lässt sich nicht übersetzen – daher englisch.
+# The add-on store description cannot be translated, so it is English.
 description: >-
   Reads a water meter with a camera and OpenCV (no LLM, no cloud) and writes
   the reading to Home Assistant. With training and admin pages, in English and
@@ -11,68 +11,71 @@ arch:
   - aarch64
   - amd64
 
-# Lernseite + Verwaltung in der Seitenleiste (nur für angemeldete Benutzer).
-# Ingress nutzt den Standard-Port 8099; der Watchdog den HEALTHCHECK im Dockerfile.
+# Training and admin pages in the sidebar (only for logged-in users). The
+# sidebar title cannot be translated, so it is the product name. Ingress uses
+# the default port 8099; the watchdog uses the HEALTHCHECK in the Dockerfile.
 ingress: true
 panel_icon: mdi:water-pump
-panel_title: Wasseruhr
+panel_title: Wasseruhr-CV
 
-# Kamerabild holen und Zählerstand nach Home Assistant schreiben
+# Fetch the camera image and write the meter reading to Home Assistant
 homeassistant_api: true
 
-# Zertifikate für HTTPS (z. B. vom Let's-Encrypt- oder DuckDNS-Add-on), nur lesend
+# Certificates for HTTPS (e.g. from the Let's Encrypt or DuckDNS add-on), read-only
 map:
   - ssl
 
-# Direkter Zugriff im Heimnetz. Die Port-Nummern sind unter Konfiguration →
-# Netzwerk frei wählbar (leer = Port zu); ob dort etwas antwortet, steuern die
-# Optionen http und https (beide standardmäßig aus).
+# Direct access in the local network. The port numbers can be chosen freely
+# under Configuration → Network (empty = port closed); whether anything answers
+# there is decided by the options http and https (both off by default).
 ports:
   8080/tcp: 8099
   8443/tcp: 8100
-# Ersatztext, falls es keine Übersetzung gibt (translations/<sprache>.yaml)
+# Fallback if there is no translation (translations/<language>.yaml)
 ports_description:
   8080/tcp: HTTP in the local network (answers only with option http)
   8443/tcp: HTTPS in the local network (answers only with option https)
 
+# Option names are English. Options of version 1.x (German names) are taken
+# over automatically on the first start (app/migration.py).
 options:
-  kamera: ""
-  intervall_minuten: 5
-  sensor: sensor.wasseruhr_cv_zaehlerstand
+  camera: ""
+  interval_minutes: 5
+  sensor: sensor.wasseruhr_cv_meter_reading
   input_number: ""
-  max_m3_pro_stunde: 3
-  toleranz_m3: 0.002
-  alle_ziffern_gelernt: true
+  max_m3_per_hour: 3
+  tolerance_m3: 0.002
+  require_all_digits: true
   http: false
   https: false
-  zertifikat: fullchain.pem
-  schluessel: privkey.pem
-  lerneffekt: true
+  certificate: fullchain.pem
+  certificate_key: privkey.pem
+  learning: true
   min_score: 0.7
-  min_abstand: 0.08
-  max_vorlagen_pro_ziffer: 30
-  verschiebung: 3
-  admin_nur_ueber_ingress: true
-  sprache: auto
+  min_margin: 0.08
+  max_templates_per_digit: 30
+  shift: 3
+  admin_ingress_only: true
+  language: auto
   log_level: INFO
 schema:
-  kamera: str?
-  intervall_minuten: int(0,1440)
+  camera: str?
+  interval_minutes: int(0,1440)
   sensor: 'match(^sensor\.[a-z0-9_]+$)?'
   input_number: str?
-  max_m3_pro_stunde: float(0,100)
-  toleranz_m3: float(0,1)
-  alle_ziffern_gelernt: bool
+  max_m3_per_hour: float(0,100)
+  tolerance_m3: float(0,1)
+  require_all_digits: bool
   http: bool
   https: bool
-  zertifikat: str
-  schluessel: str
-  lerneffekt: bool
+  certificate: str
+  certificate_key: str
+  learning: bool
   min_score: float(0,1)
-  min_abstand: float(0,1)
-  max_vorlagen_pro_ziffer: int(1,500)
-  verschiebung: int(0,10)
+  min_margin: float(0,1)
+  max_templates_per_digit: int(1,500)
+  shift: int(0,10)
   rois: str?
-  admin_nur_ueber_ingress: bool
-  sprache: list(auto|de|en)
+  admin_ingress_only: bool
+  language: list(auto|en|de)
   log_level: list(DEBUG|INFO|WARNING|ERROR)

@@ -17,17 +17,17 @@ standalone Docker service – no other tools needed.
   few minutes and writes only certain, plausible values (forward only, and no
   faster than water can flow) to a sensor for the Energy dashboard and
   optionally to an `input_number` helper
-- **Bundled initial model** ([wasseruhr_cv/modell](wasseruhr_cv/modell)),
-  ready to use on first start
+- **Bundled initial model** ([wasseruhr_cv/model](wasseruhr_cv/model)), ready
+  to use on first start
 - Training page and admin page in the Home Assistant sidebar: train more,
   correct or delete wrongly learned images, view templates, back up and
   transfer the model as a ZIP
 - **English and German:** pages, messages, log and sensor. The pages follow
-  the browser language and can be switched on the page (DE/EN), the log and
-  sensor follow the Home Assistant language. See [Language](#language).
+  the browser language and can be switched on the page (EN/DE), the log and
+  the sensor follow the Home Assistant language. See [Language](#language).
 - Optionally reachable in the local network via **HTTP and/or HTTPS**, ports
   freely selectable
-- Simple HTTP API (`POST /ablesen` with the JPEG) for your own integrations
+- Simple HTTP API (`POST /read` with the JPEG) for your own integrations
 
 ## Installation in Home Assistant
 
@@ -48,8 +48,8 @@ add-on under "Documentation".
 
 ## Getting started
 
-1. **Select the camera:** sidebar → Wasseruhr → Admin → pick the camera from
-   the list (with preview) → Apply.
+1. **Select the camera:** sidebar → Wasseruhr-CV → Admin → pick the camera
+   from the list (with preview) → Apply.
 2. **Check the ROIs:** training page → "Read camera now". The drawn
    rectangles must sit on the digit windows, otherwise
    [adjust the ROIs](#adjusting-the-rois).
@@ -57,12 +57,31 @@ add-on under "Documentation".
    meter, use "Reset model" on the admin page and teach it on the training
    page: enter the correct meter reading → "Learn from this image", until
    every digit 0–9 has been learned once.
-4. **Done:** from now on the reading is in `sensor.wasseruhr_cv_zaehlerstand`
+4. **Done:** from now on the reading is in `sensor.wasseruhr_cv_meter_reading`
    every 5 minutes. For the Energy dashboard: Settings → Dashboards → Energy
    → Water consumption → select this sensor.
 
 Details on automatic reading, HTTP/HTTPS and all options are in the
 [add-on documentation](wasseruhr_cv/DOCS.md).
+
+## Updating from version 1.x
+
+Version 2.0 uses English names for options, variables, API paths and data
+folders. Everything is taken over automatically on the first start:
+
+- **Add-on options** (`kamera` → `camera`, `lerneffekt` → `learning` …) are
+  copied to the new names and saved.
+- **Data** (`lernbilder/` → `images/`, `vorlagen/` → `templates/`, the
+  confirmed meter reading, the self-signed certificate) is renamed in place.
+- **Sensor:** an installation that wrote to the old default
+  `sensor.wasseruhr_cv_zaehlerstand` keeps writing there, so the history in the
+  Energy dashboard continues. New installations use
+  `sensor.wasseruhr_cv_meter_reading`.
+- **Docker:** the German variable names (`KAMERA`, `LERNEFFEKT` …) and values
+  (`an`/`aus`) still work. Please switch to the English ones when convenient.
+- **API:** the paths of version 1.x (`/ablesen`, `/lernen?wert=`,
+  `/kamera-ablesen`) still answer in their old format, but are no longer
+  documented.
 
 ## Standalone with Docker Compose
 
@@ -74,19 +93,20 @@ curl http://localhost:8099/health        # -> {"ok":true}
 ```
 
 Training page: `http://<host>:8099/`, admin page: `http://<host>:8099/admin`.
-For automatic reading set `KAMERA`, `HA_URL` and `HA_TOKEN` (see
+For automatic reading set `CAMERA`, `HA_URL` and `HA_TOKEN` (see
 [docker-compose.yml](docker-compose.yml)). All data lives in `./data` and
 survives restarts and updates:
 
 ```
 data/
-  lernbilder/   every image sent to /lernen, e.g. 20261109T172251000000Z_506.388.jpg
-  vorlagen/     digit templates created from them, <digit>/<timestamp>_r<wheel>.png
+  images/              every image sent to /learn, e.g. 20261109T172251000000Z_506.388.jpg
+  templates/           digit templates created from them, <digit>/<timestamp>_r<wheel>.png
+  meter_reading.json   last confirmed meter reading of the automatic reading
 ```
 
-Settings via the environment variables in [docker-compose.yml](docker-compose.yml),
-see [Configuration](#configuration). Log with the result and scores of every
-call:
+Settings via the environment variables in
+[docker-compose.yml](docker-compose.yml), see [Configuration](#configuration).
+Log with the result and scores of every call:
 
 ```bash
 docker compose logs -f
@@ -113,43 +133,44 @@ All pages, messages, the log and the sensor exist in **English and German**.
 
 | What | Language |
 |---|---|
-| Training page, admin page, API error messages | Switch on the page (DE/EN, remembered in a cookie) → option `sprache` → browser language → service language |
-| Log, sensor name and `reason` attribute | Option `sprache`; with `auto` the language of Home Assistant, without Home Assistant English |
+| Training page, admin page, API error messages | switch on the page (EN/DE, remembered in a cookie) → option `language` → browser language → service language |
+| Log, sensor name and `reason` attribute | option `language`; with `auto` the language of Home Assistant, without Home Assistant English |
 | Add-on options in Home Assistant | Home Assistant user language (`translations/`) |
 
-The option `sprache` (Docker: `SPRACHE`) accepts `auto` (default), `de` or
-`en`. Codes that automations rely on are language-neutral: the sensor
-attributes are `status`, `reason`, `recognized`, `last_check` and `source`,
-and `status` is one of `accepted`, `unchanged`, `rejected`, `error`, `set`.
+The option `language` (Docker: `LANGUAGE`) accepts `auto` (default), `en` or
+`de`. All names are English in both languages – options, variables, API paths
+and the attributes of the sensor: `status`, `reason`, `recognized`,
+`last_check` and `source`, where `status` is one of `accepted`, `unchanged`,
+`rejected`, `error`, `set`. Only texts are translated.
 
-**Adding a language:** copy `wasseruhr_cv/app/texte/en.json` to
+**Adding a language:** copy `wasseruhr_cv/app/texts/en.json` to
 `<code>.json`, translate the values (keep the keys and `{placeholders}`), add
-the code to `SPRACHEN` in `wasseruhr_cv/app/sprache.py` and to the `sprache`
+the code to `LANGUAGES` in `wasseruhr_cv/app/i18n.py` and to the `language`
 option in `config.yaml`, and add `wasseruhr_cv/translations/<code>.yaml`. The
 tests check that every catalogue has the same keys and placeholders.
 
 ## Training images & learning
 
-**Every image sent to `/lernen` is kept**, byte for byte, as
-`lernbilder/<timestamp>_<value>.jpg`. The templates are only an intermediate
+**Every image sent to `/learn` is kept**, byte for byte, as
+`images/<timestamp>_<value>.jpg`. The templates are only an intermediate
 result and can be rebuilt from the training images at any time.
 
-| `LERNEFFEKT` | On start | `POST /lernen` |
-|--------------|----------|----------------|
-| `an` (default) | Templates are **completely rebuilt from all training images** (oldest first) | Archive the image **and** learn it as a template right away |
-| `aus` | Existing templates are loaded unchanged | **Only** archive the image |
+| `LEARNING` | On start | `POST /learn` |
+|------------|----------|---------------|
+| `true` (default) | templates are **completely rebuilt from all training images** (oldest first) | archive the image **and** learn it as a template right away |
+| `false` | existing templates are loaded unchanged | **only** archive the image |
 
-This lets you, for example:
+In the add-on this is the switch **Learning**. It lets you, for example:
 
-- **freeze recognition**: with `aus`, training images keep being collected
-  while recognition stays unchanged. Later, learn everything with `an`.
+- **freeze recognition**: switched off, training images keep being collected
+  while recognition stays unchanged. Later switch it on to learn everything.
 - **remove wrong data**: correct or delete the training image on the admin
   page, the templates are rebuilt immediately.
-- **change ROIs**: set new ROIs and restart with `an`. The templates are
-  regenerated from the original images, nothing has to be taught again.
+- **change ROIs**: set new ROIs and restart with learning on. The templates
+  are regenerated from the original images, nothing has to be taught again.
 
 Nearly identical digits (correlation > 0.97) are not stored twice. At most
-`MAX_VORLAGEN_PRO_ZIFFER` templates are kept per digit; the training images
+`MAX_TEMPLATES_PER_DIGIT` templates are kept per digit; the training images
 themselves are never deleted automatically. Digits without contrast (camera
 dark or overexposed) never become templates.
 
@@ -183,38 +204,36 @@ How to find the values for your camera:
 
 ## Configuration
 
-In the add-on via the options (Configuration tab), in Docker via
-environment variables:
+In the add-on via the options (Configuration tab), in Docker via environment
+variables. Switches are toggles in the add-on; in Docker they take `true` or
+`false` (`on`/`off`, `yes`/`no` and `1`/`0` work too).
 
 | Variable | Add-on option | Default | Meaning |
 |---|---|---|---|
-| `LERNEFFEKT` | `lerneffekt` | `an` | `an`/`aus` (also `on`/`off`), see [learning](#training-images--learning) |
+| `LEARNING` | `learning` | `true` | see [learning](#training-images--learning) |
 | `ROIS` | `rois` | see above | JSON list `[[x1,y1,x2,y2], …]`, one per wheel, at least 4 |
 | `MIN_SCORE` | `min_score` | `0.70` | minimum score of the best digit for "certain" |
-| `MIN_ABSTAND` | `min_abstand` | `0.08` | minimum margin to the second-best digit |
-| `MAX_VORLAGEN_PRO_ZIFFER` | `max_vorlagen_pro_ziffer` | `30` | older templates are dropped |
-| `VERSCHIEBUNG` | `verschiebung` | `3` | search range of the template matching in px (±) |
-| `KAMERA` | `kamera` | – | camera entity that is read |
-| `INTERVALL_MINUTEN` | `intervall_minuten` | `5` | automatic reading, `0` = off (needs `KAMERA` and HA access) |
-| `SENSOR` | `sensor` | `sensor.wasseruhr_cv_zaehlerstand` | target for the meter reading, created or overwritten; `-`/`off` = no sensor |
+| `MIN_MARGIN` | `min_margin` | `0.08` | minimum margin to the second-best digit |
+| `MAX_TEMPLATES_PER_DIGIT` | `max_templates_per_digit` | `30` | older templates are dropped |
+| `SHIFT` | `shift` | `3` | search range of the template matching in px (±) |
+| `CAMERA` | `camera` | – | camera entity that is read |
+| `INTERVAL_MINUTES` | `interval_minutes` | `5` | automatic reading, `0` = off (needs `CAMERA` and HA access) |
+| `SENSOR` | `sensor` | `sensor.wasseruhr_cv_meter_reading` | target for the meter reading, created or overwritten; `none` (add-on: empty) = no sensor |
 | `INPUT_NUMBER` | `input_number` | – | optionally also an existing number helper (reported if missing) |
-| `MAX_M3_PRO_STUNDE` | `max_m3_pro_stunde` | `3` | faster increase = reading error |
-| `TOLERANZ_M3` | `toleranz_m3` | `0.002` | ignore small backward deviations |
-| `ALLE_ZIFFERN_GELERNT` | `alle_ziffern_gelernt` | `an` | only write once 0–9 are learned |
-| `HTTP` / `HTTP_PORT` | `http` | `aus` / `8080` | additional HTTP listener (add-on: port under Network, default 8099) |
-| `HTTPS` / `HTTPS_PORT` | `https` | `aus` / `8443` | additional HTTPS listener (add-on: port under Network, default 8100) |
-| `ZERTIFIKAT` / `SCHLUESSEL` | `zertifikat` / `schluessel` | `fullchain.pem` / `privkey.pem` | relative to `SSL_VERZEICHNIS` (`/ssl`) or absolute; if missing, a self-signed one is created |
-| `SPRACHE` | `sprache` | `auto` | `auto`, `de` or `en`, see [Language](#language) |
-| `PORT` | – | `8099` | main port (add-on: ingress/internal, Docker: the published port) |
-| `ADMIN_NUR_INGRESS` | `admin_nur_ueber_ingress` | Docker `aus`, add-on `an` | admin page only via the HA sidebar |
+| `MAX_M3_PER_HOUR` | `max_m3_per_hour` | `3` | faster increase = reading error |
+| `TOLERANCE_M3` | `tolerance_m3` | `0.002` | ignore small backward deviations |
+| `REQUIRE_ALL_DIGITS` | `require_all_digits` | `true` | only write once 0–9 are learned |
+| `HTTP` / `HTTP_PORT` | `http` | `false` / `8080` | additional HTTP listener (add-on: port under Network, default 8099) |
+| `HTTPS` / `HTTPS_PORT` | `https` | `false` / `8443` | additional HTTPS listener (add-on: port under Network, default 8100) |
+| `CERTIFICATE` / `CERTIFICATE_KEY` | `certificate` / `certificate_key` | `fullchain.pem` / `privkey.pem` | relative to `SSL_DIR` (`/ssl`) or absolute; if missing, a self-signed one is created |
+| `LANGUAGE` | `language` | `auto` | `auto`, `en` or `de`, see [Language](#language) |
+| `ADMIN_INGRESS_ONLY` | `admin_ingress_only` | Docker `false`, add-on `true` | admin page only via the HA sidebar |
 | `LOG_LEVEL` | `log_level` | `INFO` | `DEBUG` also shows skipped duplicates |
+| `PORT` | – | `8099` | main port (add-on: ingress/internal, Docker: the published port) |
 | `HA_URL` | – | `http://supervisor/core/api` | Home Assistant REST API, for Docker e.g. `http://homeassistant.local:8123/api` |
 | `HA_TOKEN` | – | automatic in the add-on | long-lived access token (Docker: in `.env`, never in the repository) |
-| `DATA_DIR` | – | `/data` | data directory with `lernbilder/` and `vorlagen/` |
-| `MODELL_DIR` | – | `/opt/wasseruhr/modell` | initial model, copied into an empty `DATA_DIR` on first start |
-
-The option and variable names are German and stay that way, so existing
-configurations keep working.
+| `DATA_DIR` | – | `/data` | data directory with `images/` and `templates/` |
+| `MODEL_DIR` | – | `/opt/wasseruhr/model` | initial model, copied into an empty `DATA_DIR` on first start |
 
 ## API
 
@@ -222,95 +241,100 @@ All image endpoints expect the **raw JPEG as the request body**
 (`Content-Type: image/jpeg`), not a multipart form. Error messages
 (`detail`) follow the `Accept-Language` header (English or German).
 
-### `POST /ablesen` (read)
+### `POST /read`
 
 ```bash
-curl -X POST -H "Content-Type: image/jpeg" --data-binary @image.jpg http://localhost:8099/ablesen
+curl -X POST -H "Content-Type: image/jpeg" --data-binary @image.jpg http://localhost:8099/read
 ```
 
 ```json
 {
-  "wert": 506.388,
-  "sicher": true,
-  "ziffern": [
-    {"rolle": 1, "ziffer": 0, "score": 0.981, "zweitbeste": 3, "score2": 0.512},
+  "value": 506.388,
+  "certain": true,
+  "digits": [
+    {"wheel": 1, "digit": 0, "score": 0.981, "second": 3, "second_score": 0.512},
     "...",
-    {"rolle": 8, "ziffer": 8, "score": 0.913, "zweitbeste": 6, "score2": 0.521}
+    {"wheel": 8, "digit": 8, "score": 0.913, "second": 6, "second_score": 0.521}
   ],
-  "fehlende_vorlagen": []
+  "missing_templates": []
 }
 ```
 
-- `wert` (value): all digits combined, the last 3 are decimals
-  (`00506388` → `506.388`). Also the best guess when `sicher: false`, `null`
-  only without any template.
-- `sicher` (certain): `true` only if `score >= MIN_SCORE` and
-  `score - score2 >= MIN_ABSTAND` hold for **every** wheel (`rolle`).
-- `fehlende_vorlagen` (missing templates): digits 0–9 without a template.
-  While the list is not empty, a never-learned digit can be recognised as a
-  similar one (e.g. 4 as 8). Your own integrations should check this; the
-  built-in automatic reading does.
+- `value`: all digits combined, the last 3 are decimals
+  (`00506388` → `506.388`). Also the best guess when `certain` is `false`,
+  `null` only without any template.
+- `certain`: `true` only if `score >= MIN_SCORE` and
+  `score - second_score >= MIN_MARGIN` hold for **every** wheel.
+- `missing_templates`: digits 0–9 without a template. While the list is not
+  empty, a never-learned digit can be recognised as a similar one (e.g. 4 as
+  8). Your own integrations should check this; the built-in automatic reading
+  does.
 
-### `POST /lernen?wert=506.388` (learn)
+### `POST /learn?value=506.388`
 
 ```bash
-curl -X POST -H "Content-Type: image/jpeg" --data-binary @image.jpg "http://localhost:8099/lernen?wert=506.388"
+curl -X POST -H "Content-Type: image/jpeg" --data-binary @image.jpg "http://localhost:8099/learn?value=506.388"
 ```
 
 ```json
-{"gespeichert": 8, "vorlagen_pro_ziffer": {"0": 3, "1": 0, "...": 0, "9": 0}}
+{"saved": 8, "templates_per_digit": {"0": 3, "1": 0, "...": 0, "9": 0}}
 ```
 
-Archives the image. With `LERNEFFEKT=an` the value is split into digits
+Archives the image. With learning on, the value is split into digits
 (`506.388` → `0 0 5 0 6 3 8 8`) and every digit is learned as a template. A
 comma as decimal separator is accepted. **Without a body and with
-`ablesung=<nr>`**, the image of one of the last 20 readings is learned and
+`reading=<number>`**, the image of one of the last 20 readings is learned and
 read again right away.
 
-### `POST /kamera-ablesen` (read camera)
+### `POST /read-camera`
 
-Fetches the current image of the camera `KAMERA` via the Home Assistant API
-and reads it. Response like `/ablesen` plus `nr` for the training page
-(`/?nr=<nr>`). `400` without camera or token, `502` if the camera is not
-reachable.
+Fetches the current image of the camera `CAMERA` via the Home Assistant API
+and reads it. Response like `/read` plus `reading` (its number) for the
+training page (`/?reading=<number>`). `400` without camera or token, `502` if
+the camera is not reachable.
 
 ### `GET /status`, `GET /debug.png`, `GET /health`, `GET /`
 
 | Endpoint | Response |
 |---|---|
-| `GET /status` | `{"vorlagen_pro_ziffer": {…}, "fehlende_vorlagen": […], "lerneffekt": true, "lernbilder": 21, "zaehlerstand": 506.388}` |
-| `GET /debug.png?letztes=1` / `?nr=<nr>` | camera image with ROIs (green = certain, red = uncertain) and processed digits |
+| `GET /status` | `{"templates_per_digit": {…}, "missing_templates": […], "learning": true, "training_images": 21, "meter_reading": 506.388}` |
+| `GET /debug.png[?reading=<number>]` | camera image of the latest (or the given) reading with ROIs (green = certain, red = uncertain) and processed digits |
 | `GET /health` | `{"ok": true}` |
-| `GET /` | training page, `?nr=<nr>` opens one of the last 20 readings, `?sprache=en\|de` switches the language |
+| `GET /` | training page; `?reading=<number>` opens one of the last 20 readings, `?lang=en\|de` switches the language |
 
 ### `GET /admin` – admin page
 
 | Endpoint | Purpose |
 |---|---|
 | `GET /admin` | admin page |
-| `GET /admin/info` | version, settings, templates per digit |
-| `GET /admin/ablesungen` | last 20 readings, newest first |
-| `GET /admin/lernbilder` | all training images, newest first |
-| `GET /admin/lernbilder/<name>[?ausschnitt=1]` | original or only the counter |
-| `POST /admin/lernbilder/<name>/wert?wert=506.388` | correct the value (timestamp stays) |
-| `POST /admin/lernbilder/<name>/loeschen` | delete a training image |
-| `GET /admin/vorlagen` | templates per digit (PNG as Base64) |
-| `POST /admin/neu-aufbauen` | rebuild templates from all training images |
-| `GET /admin/export.zip` | model export (`lernbilder/`, `vorlagen/`, `modell.json`) |
-| `POST /admin/import?modus=ergaenzen\|ersetzen` | ZIP as body; `ergaenzen` (also `merge`) only takes unknown timestamps, `ersetzen` (also `replace`) replaces everything |
+| `GET /admin/info` | version, settings, templates per digit, auto-reading |
+| `GET /admin/readings` | last 20 readings, newest first |
+| `GET /admin/images` | all training images, newest first |
+| `GET /admin/images/<name>[?counter=1]` | original or only the counter |
+| `POST /admin/images/<name>/value?value=506.388` | correct the value (timestamp stays) |
+| `POST /admin/images/<name>/delete` | delete a training image |
+| `GET /admin/templates` | templates per digit (PNG as Base64) |
+| `POST /admin/rebuild` | rebuild templates from all training images |
+| `POST /admin/reset` | delete all training images and templates |
+| `GET /admin/auto-reading` | state of the automatic reading |
+| `POST /admin/auto-reading/run` | read, check and write now |
+| `POST /admin/auto-reading/meter-reading?value=506.388` | set the meter reading by hand |
+| `GET /admin/cameras`, `POST /admin/camera?entity_id=…` | list cameras, choose one (add-on: saved, restart) |
+| `GET /admin/export.zip` | model export (`images/`, `templates/`, `model.json`) |
+| `POST /admin/import?mode=merge\|replace` | ZIP as body; `merge` only takes unknown timestamps, `replace` replaces everything |
 
-With `ADMIN_NUR_INGRESS=an`, `/admin` only answers requests from the Home
+With `ADMIN_INGRESS_ONLY=true`, `/admin` only answers requests from the Home
 Assistant Supervisor (ingress), everyone else gets `403`.
 
 ### Errors
 
 | Status | When |
 |---|---|
-| `400` | empty body, unreadable or too large image (over 25 megapixels), ROI outside the image, invalid `wert`, damaged ZIP |
-| `403` | browser request from a foreign website (Origin ≠ Host), or `/admin` without ingress with `ADMIN_NUR_INGRESS=an` |
+| `400` | empty body, unreadable or too large image (over 25 megapixels), ROI outside the image, invalid `value`, damaged ZIP |
+| `403` | browser request from a foreign website (Origin ≠ Host), or `/admin` without ingress with `ADMIN_INGRESS_ONLY=true` |
 | `404` | reading no longer in memory |
 | `413` | body larger than 10 MB (images) or 300 MB (model import) |
-| `422` | `wert` missing |
+| `422` | `value` missing |
 
 Response as `{"detail": "<description>"}`. Write requests with an `Origin`
 header are only accepted if it matches `Host`. Programs like curl do not send
@@ -323,8 +347,8 @@ an `Origin` and are not affected.
    bright on a dark background, whatever the colour of the lighting.
 3. **Normalise:** MINMAX to 0–255, GaussianBlur 3×3, size 24×40 px.
 4. **Compare:** `cv2.matchTemplate` with `TM_CCOEFF_NORMED` against every
-   template, with ±`VERSCHIEBUNG` px leeway. The score of a digit is the best
-   result over all its templates.
+   template, with ±`SHIFT` px leeway. The score of a digit is the best result
+   over all its templates.
 
 ## Development
 
@@ -339,30 +363,29 @@ DATA_DIR=./data .venv/bin/python wasseruhr_cv/start.py     # locally on port 809
 repository.yaml          makes the repository a Home Assistant add-on repository
 wasseruhr_cv/            the add-on (build context for HA and Docker Compose)
   config.yaml            add-on definition: options, ingress, ports
-  translations/          option texts in Home Assistant (de, en)
+  translations/          option texts in Home Assistant (en, de)
   Dockerfile, start.py   image and start (options -> environment variables)
   DOCS.md, CHANGELOG.md  documentation shown in the add-on (English and German)
   app/                   the service (FastAPI + OpenCV)
-    erkennung.py         preprocessing, template matching
-    vorlagen.py          store, deduplicate and rebuild templates
-    lernbilder.py        archive of all training images
-    modell.py            model export/import (ZIP)
-    verwaltung.py        /admin, verwaltungsseite.py its HTML
-    lernseite.py         training page, debugbild.py /debug.png
-    automatik.py         reading at intervals, plausibility, writing to HA
-    ha.py, kamera.py     Home Assistant REST API (states, services, camera)
-    schutz.py            origin check, size limits, security headers
-    sprache.py           English/German: language selection, translation
-    texte/               text catalogues de.json, en.json
+    recognition.py       preprocessing, template matching
+    templates.py         store, deduplicate and rebuild templates
+    image_archive.py     archive of all training images
+    model.py             model export/import (ZIP), bundled model
+    admin.py             /admin, admin_page.py its HTML
+    training_page.py     training page, debug_image.py /debug.png
+    auto_reading.py      reading at intervals, plausibility, writing to HA
+    ha.py, camera.py     Home Assistant REST API (states, services, camera)
+    security.py          origin check, size limits, security headers
+    i18n.py, texts/      English/German: language selection, text catalogues
+    migration.py         takes over data and options of version 1.x
     server.py            main port + optional HTTP/HTTPS in one process
     main.py              endpoints, logging
-  modell/                initial model: lernbilder/ (counter only, PNG), vorlagen/
+  model/                 initial model: images/ (counter only, PNG), templates/
 tests/                   pytest; test images blacked out except for the counter
 docker-compose.yml       standalone operation
 ```
 
-The code itself (identifiers, comments) is German; everything users see is
-available in both languages.
+New texts always go into both catalogues (`texts/en.json`, `texts/de.json`).
 
 **Publishing a new version:** raise the version in `wasseruhr_cv/config.yaml`,
 `wasseruhr_cv/app/__init__.py` and `pyproject.toml` (a test checks that all

@@ -1,5 +1,60 @@
 # Changelog
 
+## 2.0.0
+
+**English**
+
+- **English names everywhere, no more mix of languages:** add-on options,
+  environment variables, API paths and fields, data folders and the code are
+  English; German is a complete translation of all texts. This removes the
+  German leftovers of 1.5.0 in the English version (option names in messages
+  and docs, links such as `?sprache=`, the values `an`/`aus`).
+- **Automatic update from 1.x:** the options (`kamera` → `camera`,
+  `lerneffekt` → `learning` …) are taken over and saved, the data folders
+  renamed (`lernbilder/` → `images/`, `vorlagen/` → `templates/`), the
+  confirmed meter reading kept. Installations keep writing to their sensor
+  `sensor.wasseruhr_cv_zaehlerstand`, so the Energy dashboard history
+  continues; new installations use `sensor.wasseruhr_cv_meter_reading`.
+- **Docker:** the variables are English (`CAMERA`, `LEARNING` …), switches take
+  `true`/`false`. The German names and `an`/`aus` keep working.
+- **API:** `POST /read`, `/learn?value=`, `/read-camera` with English answers
+  (`value`, `certain`, `digits` …). The paths of 1.x (`/ablesen`,
+  `/lernen?wert=`, `/kamera-ablesen`) keep working with their old answers. The
+  admin API (`/admin/images` …) and `/status` use the new names – please adjust
+  own integrations.
+- The sidebar title is now **Wasseruhr-CV** (Home Assistant cannot translate
+  it). The language switch uses `?lang=en|de`.
+- Documentation: switches are described as switches (on/off), no more in-page
+  links in the add-on documentation (Home Assistant does not support them).
+
+**Deutsch**
+
+- **Englische Namen überall, kein Sprachmix mehr:** Add-on-Optionen,
+  Umgebungsvariablen, API-Pfade und -Felder, Datenordner und der Code sind
+  englisch; Deutsch ist eine vollständige Übersetzung aller Texte. Damit sind
+  die deutschen Reste von 1.5.0 in der englischen Fassung weg (Optionsnamen in
+  Meldungen und Doku, Links wie `?sprache=`, die Werte `an`/`aus`).
+- **Automatisches Update von 1.x:** Die Optionen (`kamera` → `camera`,
+  `lerneffekt` → `learning` …) werden übernommen und gespeichert, die
+  Datenordner umbenannt (`lernbilder/` → `images/`, `vorlagen/` →
+  `templates/`), der bestätigte Zählerstand bleibt. Bestehende Installationen
+  schreiben weiter in ihren Sensor `sensor.wasseruhr_cv_zaehlerstand`, damit
+  der Verlauf im Energie-Dashboard weiterläuft; neue Installationen nutzen
+  `sensor.wasseruhr_cv_meter_reading`.
+- **Docker:** Die Variablen sind englisch (`CAMERA`, `LEARNING` …), Schalter
+  nehmen `true`/`false`. Die deutschen Namen und `an`/`aus` funktionieren
+  weiter.
+- **API:** `POST /read`, `/learn?value=`, `/read-camera` mit englischen
+  Antworten (`value`, `certain`, `digits` …). Die Pfade von 1.x (`/ablesen`,
+  `/lernen?wert=`, `/kamera-ablesen`) funktionieren weiter mit ihren alten
+  Antworten. Die Verwaltungs-API (`/admin/images` …) und `/status` nutzen die
+  neuen Namen – eigene Anbindungen bitte anpassen.
+- Der Titel in der Seitenleiste heißt jetzt **Wasseruhr-CV** (Home Assistant
+  kann ihn nicht übersetzen). Der Sprachumschalter nutzt `?lang=en|de`.
+- Dokumentation: Schalter sind als Schalter beschrieben (an/aus), keine
+  Sprunglinks mehr in der Add-on-Dokumentation (Home Assistant unterstützt sie
+  nicht).
+
 ## 1.5.0
 
 **English**

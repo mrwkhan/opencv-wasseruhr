@@ -1,10 +1,11 @@
-"""Start von Wasseruhr-CV – als Home-Assistant-Add-on und mit Docker Compose.
+"""Start of Wasseruhr-CV – as a Home Assistant add-on and with Docker Compose.
 
-Im Add-on übersetzt das Skript die Optionen aus /data/options.json in die
-Umgebungsvariablen des Webdienstes. Ohne options.json (Docker Compose) gelten
-die Umgebungsvariablen unverändert. Danach wird die Konfiguration geprüft und
-der Dienst gestartet: Port 8099 für Ingress/intern, optional HTTP und HTTPS
-fürs Heimnetz (siehe app/server.py)."""
+In the add-on the script turns the options from /data/options.json into the
+environment variables of the web service. Without options.json (Docker
+Compose) the environment variables apply unchanged. Options of version 1.x
+(German names) are taken over once via the Supervisor. Then the configuration
+is checked and the service started: port 8099 for ingress/internal, optionally
+HTTP and HTTPS for the local network (see app/server.py)."""
 
 from __future__ import annotations
 
@@ -14,81 +15,117 @@ import sys
 from pathlib import Path
 from typing import NoReturn
 
-from app.sprache import SPRACHEN, T, ausgeben
+from app.i18n import LANGUAGES, T, render
 
-OPTIONEN = Path(os.environ.get("ADDON_OPTIONEN", "/data/options.json"))
-PORT = "8099"  # Ingress-Port des Add-ons (config.yaml: Standard ingress_port)
+OPTIONS = Path(os.environ.get("ADDON_OPTIONS", "/data/options.json"))
+PORT = "8099"  # ingress port of the add-on (config.yaml: default ingress_port)
 
-# Add-on-Option -> Umgebungsvariable des Dienstes (siehe app/konfig.py)
-ZUORDNUNG = {
-    "kamera": "KAMERA",
-    "intervall_minuten": "INTERVALL_MINUTEN",
+# Add-on option -> environment variable of the service (see app/config.py)
+MAPPING = {
+    "camera": "CAMERA",
+    "interval_minutes": "INTERVAL_MINUTES",
     "sensor": "SENSOR",
     "input_number": "INPUT_NUMBER",
-    "max_m3_pro_stunde": "MAX_M3_PRO_STUNDE",
-    "toleranz_m3": "TOLERANZ_M3",
-    "alle_ziffern_gelernt": "ALLE_ZIFFERN_GELERNT",
+    "max_m3_per_hour": "MAX_M3_PER_HOUR",
+    "tolerance_m3": "TOLERANCE_M3",
+    "require_all_digits": "REQUIRE_ALL_DIGITS",
     "http": "HTTP",
     "https": "HTTPS",
-    "zertifikat": "ZERTIFIKAT",
-    "schluessel": "SCHLUESSEL",
-    "lerneffekt": "LERNEFFEKT",
+    "certificate": "CERTIFICATE",
+    "certificate_key": "CERTIFICATE_KEY",
+    "learning": "LEARNING",
     "min_score": "MIN_SCORE",
-    "min_abstand": "MIN_ABSTAND",
-    "max_vorlagen_pro_ziffer": "MAX_VORLAGEN_PRO_ZIFFER",
-    "verschiebung": "VERSCHIEBUNG",
+    "min_margin": "MIN_MARGIN",
+    "max_templates_per_digit": "MAX_TEMPLATES_PER_DIGIT",
+    "shift": "SHIFT",
     "rois": "ROIS",
-    "admin_nur_ueber_ingress": "ADMIN_NUR_INGRESS",
-    "sprache": "SPRACHE",
+    "admin_ingress_only": "ADMIN_INGRESS_ONLY",
+    "language": "LANGUAGE",
     "log_level": "LOG_LEVEL",
 }
-# Im Add-on bedeutet ein geleertes Feld hier "keine Entität" statt "Standard"
-ENTITAETEN = ("sensor", "input_number")
+# In the add-on an emptied field here means "no entity" instead of "default"
+ENTITY_OPTIONS = ("sensor", "input_number")
 
 
-def umgebung_setzen(optionen: dict, addon: bool = False) -> None:
-    """Gesetzte Optionen überschreiben die Umgebung, leere/fehlende lassen sie stehen."""
-    for option, variable in ZUORDNUNG.items():
-        wert = optionen.get(option)
-        if wert is None or (isinstance(wert, str) and not wert.strip()):
-            if addon and option in ENTITAETEN:
-                os.environ[variable] = "-"
+def set_environment(options: dict, addon: bool = False) -> None:
+    """Options that are set override the environment, empty/missing ones leave it alone."""
+    for option, variable in MAPPING.items():
+        value = options.get(option)
+        if value is None or (isinstance(value, str) and not value.strip()):
+            if addon and option in ENTITY_OPTIONS:
+                os.environ[variable] = "none"
             continue
-        if isinstance(wert, bool):
-            wert = "an" if wert else "aus"
-        os.environ[variable] = str(wert).strip()
+        if isinstance(value, bool):
+            value = "true" if value else "false"
+        os.environ[variable] = str(value).strip()
 
 
-def abbrechen(text) -> NoReturn:
-    """Startfehler ins Protokoll: in der eingestellten Sprache, sonst Englisch und Deutsch
-    (die Sprache von Home Assistant ist zu diesem Zeitpunkt noch nicht bekannt)."""
-    wahl = (os.environ.get("SPRACHE") or "").strip().lower()
-    sprachen = [wahl] if wahl in SPRACHEN else ["en", "de"]
-    sys.exit("\n".join(f"[wasseruhr] {ausgeben(text, s)}" for s in sprachen))
+def _languages() -> list[str]:
+    """Language for start-up messages; English and German as long as it is open."""
+    choice = (os.environ.get("LANGUAGE") or os.environ.get("SPRACHE") or "").strip().lower()
+    return [choice] if choice in LANGUAGES else ["en", "de"]
+
+
+def say(text) -> None:
+    for language in _languages():
+        print(f"[wasseruhr] {render(text, language)}", flush=True)
+
+
+def abort(text) -> NoReturn:
+    """Start-up error into the log: in the configured language, otherwise English and
+    German (the language of Home Assistant is not known at this point)."""
+    sys.exit("\n".join(f"[wasseruhr] {render(text, language)}" for language in _languages()))
+
+
+def migrate_addon_options(options: dict) -> dict:
+    """Takes over the options of version 1.x (German names) once and stores them
+    under the new names. Returns the options to use for this start."""
+    token = (os.environ.get("SUPERVISOR_TOKEN") or "").strip()
+    if not token:
+        return options
+    from app import ha
+    from app.migration import is_legacy_installation, migrate_options
+
+    url = (os.environ.get("SUPERVISOR_URL") or "").strip() or "http://supervisor"
+    try:
+        stored = ha.addon_options(url, token)
+    except ha.HAError:
+        stored = {}
+    new = migrate_options(options, stored, is_legacy_installation(Path(os.environ.get("DATA_DIR") or "/data")))
+    if new is None:
+        return options
+    try:
+        ha.set_addon_options(url, token, new)
+        say(T("start.options_migrated"))
+    except ha.HAError as e:
+        say(T("start.options_not_saved", error=e))
+    return new
 
 
 def main() -> None:
-    addon = OPTIONEN.is_file()
+    addon = OPTIONS.is_file()
     try:
-        optionen = json.loads(OPTIONEN.read_text()) if addon else {}
+        options = json.loads(OPTIONS.read_text()) if addon else {}
     except ValueError as e:
-        abbrechen(T("start.json", datei=OPTIONEN, fehler=e))
-    umgebung_setzen(optionen, addon=addon)
+        abort(T("start.json", file=OPTIONS, error=e))
+    if addon:
+        options = migrate_addon_options(options)
+    set_environment(options, addon=addon)
 
-    from app.konfig import Konfig, KonfigFehler
+    from app.config import Config, ConfigError
 
     try:
-        konfig = Konfig.aus_umgebung()
-    except KonfigFehler as e:
-        abbrechen(T("start.konfig", fehler=e))
+        config = Config.from_env()
+    except ConfigError as e:
+        abort(T("start.config", error=e))
 
     from app import ha
     from app.main import app
-    from app.server import starten
+    from app.server import start
 
-    if konfig.ha_token:  # SPRACHE=auto: schon die ersten Meldungen in der Sprache von HA
-        ha.sprache_uebernehmen(konfig.ha_url, konfig.ha_token)
-    starten(app, konfig)
+    if config.ha_token:  # LANGUAGE=auto: the very first messages already in the language of HA
+        ha.adopt_language(config.ha_url, config.ha_token)
+    start(app, config)
 
 
 if __name__ == "__main__":
