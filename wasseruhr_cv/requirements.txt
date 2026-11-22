@@ -1,4 +1,4 @@
-fastapi==0.162.2
+fastapi==0.165.0
 uvicorn==0.54.0
-opencv-python-headless==5.0.0.93
-numpy==2.5.4
+opencv-python-headless==5.1.0.95
+numpy==2.5.5
