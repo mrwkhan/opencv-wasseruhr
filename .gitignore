@@ -1,0 +1,23 @@
+# Zugangsdaten – gehören nie ins Repository
+secrets*
+.env
+.env.*
+*.pem
+*.key
+
+# Persönliche Daten: Lernbilder, Vorlagen und Modell-Exporte zeigen die eigene Wasseruhr
+data/
+*.zip
+snapshot_*.jpg
+wasseruhr_cv/modell/*
+!wasseruhr_cv/modell/.gitkeep
+
+# Python & Werkzeuge
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
+._*
+.vscode/
+.idea/

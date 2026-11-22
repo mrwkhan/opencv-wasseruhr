@@ -1,0 +1,43 @@
+configuration:
+  kamera:
+    name: Camera
+    description: >-
+      Camera entity used by "Kamera jetzt ablesen" (read camera now) on the
+      learning page and in the admin page. Leave empty if only Node-RED sends images.
+  lerneffekt:
+    name: Learning
+    description: >-
+      On: new learning images become templates immediately, and on start all
+      templates are rebuilt from the learning images. Off: templates are
+      frozen, learning images are only collected.
+  min_score:
+    name: Minimum score
+    description: Score the best digit needs for a wheel to count as certain (default 0.70).
+  min_abstand:
+    name: Minimum margin
+    description: Required margin between best and second-best digit (default 0.08).
+  max_vorlagen_pro_ziffer:
+    name: Templates per digit
+    description: Maximum number of templates kept per digit, oldest are dropped (default 30).
+  verschiebung:
+    name: Shift
+    description: Template matching search range in pixels, ± (default 3).
+  rois:
+    name: ROIs
+    description: >-
+      Only if the camera position changed: JSON list [[x1,y1,x2,y2], …], one
+      per wheel from left to right. Empty = defaults for the 640×480 image.
+  admin_nur_ueber_ingress:
+    name: Admin page via Home Assistant only
+    description: >-
+      The admin page (delete, import, export) is then only reachable through
+      the sidebar, i.e. for logged-in users. Learning page and API stay
+      reachable in the local network.
+  log_level:
+    name: Log level
+    description: DEBUG additionally logs skipped duplicates.
+network:
+  8099/tcp: >-
+    API and learning page in the local network (no password). Leave empty to
+    keep the port closed; Node-RED as an add-on still reaches the service
+    internally via the hostname shown on the Info page.

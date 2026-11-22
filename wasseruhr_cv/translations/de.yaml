@@ -1,0 +1,51 @@
+configuration:
+  kamera:
+    name: Kamera
+    description: >-
+      Kamera-Entität für „Kamera jetzt ablesen“ auf der Lernseite und in der
+      Verwaltung. Leer lassen, wenn nur Node-RED Bilder schickt.
+  lerneffekt:
+    name: Lerneffekt
+    description: >-
+      An: Neue Lernbilder werden sofort zu Vorlagen, und beim Start werden alle
+      Vorlagen aus den Lernbildern neu aufgebaut. Aus: Die Vorlagen sind
+      eingefroren, Lernbilder werden nur gesammelt.
+  min_score:
+    name: Mindest-Score
+    description: >-
+      So gut muss die beste Ziffer passen, damit eine Rolle als sicher gilt
+      (Standard 0.70).
+  min_abstand:
+    name: Mindestabstand
+    description: >-
+      So viel besser als die zweitbeste muss die beste Ziffer passen
+      (Standard 0.08).
+  max_vorlagen_pro_ziffer:
+    name: Vorlagen je Ziffer
+    description: >-
+      Höchstzahl gespeicherter Vorlagen pro Ziffer, die ältesten fallen heraus
+      (Standard 30). Die Lernbilder selbst werden nie gelöscht.
+  verschiebung:
+    name: Verschiebung
+    description: Suchbereich des Template Matchings in Pixeln, ± (Standard 3).
+  rois:
+    name: ROIs
+    description: >-
+      Nur nötig, wenn die Kamera anders sitzt: JSON-Liste [[x1,y1,x2,y2], …],
+      eine pro Rolle von links nach rechts. Leer lassen = Standard für das
+      640×480-Bild. Mit Lerneffekt werden die Vorlagen beim Neustart aus den
+      Lernbildern neu erzeugt.
+  admin_nur_ueber_ingress:
+    name: Verwaltung nur über Home Assistant
+    description: >-
+      Die Verwaltung (Löschen, Import, Export) ist dann nur über die
+      Seitenleiste erreichbar, also nur für angemeldete Benutzer. Lernseite und
+      API bleiben im Heimnetz erreichbar.
+  log_level:
+    name: Log-Level
+    description: DEBUG zeigt zusätzlich übersprungene Duplikate.
+network:
+  8099/tcp: >-
+    API und Lernseite im Heimnetz (ohne Passwort). Leer lassen, um den Port
+    nicht zu öffnen. Node-RED als Add-on erreicht den Dienst trotzdem intern
+    über den Hostnamen von der Info-Seite.

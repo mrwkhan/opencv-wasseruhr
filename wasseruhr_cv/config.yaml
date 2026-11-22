@@ -1,0 +1,45 @@
+name: Wasseruhr-CV
+version: "1.3.0"
+slug: wasseruhr_cv
+description: >-
+  Liest eine Wasseruhr per OpenCV-Template-Matching ab (kein LLM, keine Cloud).
+  Mit Lernseite und Verwaltung zum Anlernen und Nachtrainieren.
+url: https://github.com/mrwkhan/opencv-wasseruhr
+arch:
+  - aarch64
+  - amd64
+
+# Lernseite + Verwaltung in der HA-Seitenleiste (nur für angemeldete Benutzer).
+# Ingress nutzt den Standard-Port 8099; der Watchdog den HEALTHCHECK im Dockerfile.
+ingress: true
+panel_icon: mdi:water-pump
+panel_title: Wasseruhr
+
+# Für "Kamera jetzt ablesen": Kamerabild über die HA-API holen
+homeassistant_api: true
+
+# API für Node-RED & Lernseite im Heimnetz. Ein Node-RED-Add-on erreicht den
+# Dienst auch ohne diesen Port über den internen Hostnamen (Info-Seite).
+ports:
+  8099/tcp: 8099
+ports_description:
+  8099/tcp: API (POST /ablesen) und Lernseite im Heimnetz, ohne Passwort
+
+options:
+  lerneffekt: true
+  min_score: 0.7
+  min_abstand: 0.08
+  max_vorlagen_pro_ziffer: 30
+  verschiebung: 3
+  admin_nur_ueber_ingress: true
+  log_level: INFO
+schema:
+  kamera: 'match(^camera\.[a-z0-9_]+$)?'
+  lerneffekt: bool
+  min_score: float(0,1)
+  min_abstand: float(0,1)
+  max_vorlagen_pro_ziffer: int(1,500)
+  verschiebung: int(0,10)
+  rois: str?
+  admin_nur_ueber_ingress: bool
+  log_level: list(DEBUG|INFO|WARNING|ERROR)

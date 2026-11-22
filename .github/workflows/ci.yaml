@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: Tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements-dev.txt
+            wasseruhr_cv/requirements.txt
+      - run: pip install -r requirements-dev.txt
+      - run: python -m pytest -q
+
+  addon-linter:
+    name: Add-on-Konfiguration
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: frenck/action-addon-linter@v2
+        with:
+          path: "./wasseruhr_cv"
+
+  build:
+    name: Image ${{ matrix.arch }}
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Image bauen (wie der Supervisor)
+        run: docker build --build-arg BUILD_ARCH=${{ matrix.arch }} -t wasseruhr-cv:ci wasseruhr_cv
+      - name: Starten, ablesen, lernen
+        run: |
+          docker run -d --name wucv -p 8099:8099 wasseruhr-cv:ci
+          for i in $(seq 1 30); do curl -sf http://localhost:8099/health && break; sleep 1; done
+          curl -sf -X POST -H "Content-Type: image/jpeg" --data-binary @tests/beispiel.jpg \
+            "http://localhost:8099/lernen?wert=506.388"
+          curl -sf -X POST -H "Content-Type: image/jpeg" --data-binary @tests/beispiel.jpg \
+            http://localhost:8099/ablesen | tee ablesung.json
+          python3 -c "import json; d = json.load(open('ablesung.json')); assert d['sicher'] and d['wert'] == 506.388, d"
+      - name: Protokoll
+        if: always()
+        run: docker logs wucv

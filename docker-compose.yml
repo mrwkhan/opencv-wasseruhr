@@ -1,0 +1,28 @@
+# Wasseruhr-CV als eigenständiger Docker-Dienst (ohne Home Assistant).
+# Start: docker compose up -d --build   ->   Lernseite http://<host>:8099/
+services:
+  wasseruhr-cv:
+    build: ./wasseruhr_cv
+    image: wasseruhr-cv:latest
+    container_name: wasseruhr-cv
+    restart: unless-stopped
+    ports:
+      - "8099:8099"
+    volumes:
+      - ./data:/data          # lernbilder/ (alle Lernbilder) + vorlagen/<ziffer>/
+    environment:
+      # an  = Vorlagen beim Start aus allen Lernbildern neu aufbauen, /lernen lernt sofort
+      # aus = Vorlagen eingefroren, /lernen archiviert das Bild nur
+      LERNEFFEKT: "${LERNEFFEKT:-an}"
+      MIN_SCORE: "0.70"
+      MIN_ABSTAND: "0.08"
+      MAX_VORLAGEN_PRO_ZIFFER: "30"
+      # VERSCHIEBUNG: "3"     # Suchbereich Template Matching in px (±)
+      # LOG_LEVEL: "INFO"
+      # ROIs je Rolle [x1, y1, x2, y2] (links -> rechts), siehe README "ROIs anpassen":
+      # ROIS: "[[130,144,162,196],[173,144,205,196],[216,144,248,196],[260,144,292,196],[304,144,336,196],[347,144,379,196],[391,144,423,196],[435,144,467,196]]"
+      # "Kamera jetzt ablesen" über die Home-Assistant-API. Das Token gehört in
+      # eine .env-Datei neben dieser Datei (HA_TOKEN=...), nie hier hinein.
+      # KAMERA: "camera.wasseruhr"
+      # HA_URL: "http://homeassistant.local:8123/api"
+      # HA_TOKEN: "${HA_TOKEN}"
