@@ -30,6 +30,7 @@ def jpeg() -> bytes:
 
 
 def _client(tmp_path: Path, client=("testclient", 50000), **kwargs) -> TestClient:
+    kwargs.setdefault("sprache", "de")
     return TestClient(create_app(Konfig(daten_verzeichnis=tmp_path, **kwargs)), client=client)
 
 

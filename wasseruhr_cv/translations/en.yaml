@@ -2,27 +2,31 @@ configuration:
   kamera:
     name: Camera
     description: >-
-      Camera entity to read, e.g. camera.water_meter. Easier: pick it from a
-      list with preview in the sidebar under Wasseruhr → Verwaltung. Without a
-      camera there is no automatic reading.
+      Camera entity whose image is read, e.g. camera.water_meter. Easier: pick
+      it from a list with preview in the sidebar under Wasseruhr → Admin.
+      Without a camera there is no automatic reading.
   intervall_minuten:
     name: Interval (minutes)
-    description: How often the camera is read automatically. 0 turns automatic reading off.
+    description: >-
+      How often the camera is read automatically. 0 turns automatic reading
+      off.
   sensor:
     name: Sensor
     description: >-
       The add-on writes the checked meter reading here (m³, device class
-      water), also usable in the Energy dashboard. Created if missing; an
-      existing sensor is overwritten. Empty = no sensor.
+      water), also for the Energy dashboard. Created if missing; an existing
+      sensor is overwritten. Leave empty = no sensor.
   input_number:
     name: Helper (input_number)
     description: >-
-      Optional: additionally set a number helper, e.g. input_number.water_meter.
-      The helper must already exist. A value set there by hand counts as a
-      correction of the meter reading.
+      Optional: additionally set a number helper, e.g.
+      input_number.water_meter. The helper must already exist. A value set
+      there by hand counts as a correction of the meter reading.
   max_m3_pro_stunde:
     name: Maximum increase (m³ per hour)
-    description: Faster increases are treated as reading errors and discarded (default 3).
+    description: >-
+      If the value rises faster, it counts as a reading error and is
+      discarded (default 3).
   toleranz_m3:
     name: Tolerance (m³)
     description: >-
@@ -31,62 +35,79 @@ configuration:
   alle_ziffern_gelernt:
     name: Only write once all digits are learned
     description: >-
-      Nothing is written while a digit 0–9 has no template yet; an unlearned
+      Nothing is written while a digit 0–9 has no template yet. An unlearned
       digit could otherwise be recognised as a similar one.
   http:
     name: HTTP in the local network
     description: >-
-      Serve learning page and API unencrypted in the local network. Port under
-      Network (default 8099). No password – never forward it in your router.
+      Serve the training page and API unencrypted in the local network. Port
+      under Network (default 8099). No password – never forward it in your
+      router.
   https:
     name: HTTPS in the local network
     description: >-
-      Serve learning page and API encrypted in the local network. Port under
-      Network (default 8100). No password – never forward it in your router.
+      Serve the training page and API encrypted in the local network. Port
+      under Network (default 8100). No password – never forward it in your
+      router.
   zertifikat:
     name: HTTPS certificate
     description: >-
-      File in /ssl (e.g. from the Let's Encrypt add-on), default fullchain.pem.
-      If missing, the add-on creates a self-signed certificate (the browser
-      warns once).
+      File in the /ssl folder (e.g. from the Let's Encrypt add-on), default
+      fullchain.pem. If it is missing, the add-on creates a self-signed
+      certificate (the browser then warns once).
   schluessel:
     name: HTTPS key
-    description: File in /ssl, default privkey.pem.
+    description: File in the /ssl folder, default privkey.pem.
   lerneffekt:
     name: Learning
     description: >-
-      On: new learning images become templates immediately, and on start all
-      templates are rebuilt from the learning images. Off: templates are
-      frozen, learning images are only collected.
+      On: new training images become templates right away, and on start all
+      templates are rebuilt from the training images. Off: templates are
+      frozen, training images are only collected.
   min_score:
     name: Minimum score
-    description: Score the best digit needs for a wheel to count as certain (default 0.70).
+    description: >-
+      How well the best digit must match for a wheel to count as certain
+      (default 0.70).
   min_abstand:
     name: Minimum margin
-    description: Required margin between best and second-best digit (default 0.08).
+    description: >-
+      How much better than the second-best digit the best one must match
+      (default 0.08).
   max_vorlagen_pro_ziffer:
     name: Templates per digit
-    description: Maximum number of templates kept per digit, oldest are dropped (default 30).
+    description: >-
+      Maximum number of templates kept per digit, the oldest are dropped
+      (default 30). The training images themselves are never deleted.
   verschiebung:
     name: Shift
-    description: Template matching search range in pixels, ± (default 3).
+    description: Search range of the template matching in pixels, ± (default 3).
   rois:
     name: ROIs
     description: >-
-      Only if the camera position changed: JSON list [[x1,y1,x2,y2], …], one
-      per wheel from left to right. Empty = defaults for the 640×480 image.
+      Only needed if the camera sits differently: JSON list [[x1,y1,x2,y2], …],
+      one per wheel from left to right. Leave empty = default for the 640×480
+      image. With learning on, the templates are regenerated from the training
+      images on restart.
   admin_nur_ueber_ingress:
     name: Admin page via Home Assistant only
     description: >-
-      Delete, import and export only through the sidebar, i.e. for logged-in
-      users – even if HTTP or HTTPS is on.
+      Delete, import and export only through the sidebar, i.e. only for
+      logged-in users – even if HTTP or HTTPS is on.
+  sprache:
+    name: Language
+    description: >-
+      Language of the training page, admin page, messages, log and sensor.
+      auto: web pages follow the browser language (switchable on the page),
+      log and sensor follow the Home Assistant language. de or en sets the
+      language everywhere.
   log_level:
     name: Log level
     description: DEBUG additionally logs skipped duplicates.
 network:
   8080/tcp: >-
     Port for HTTP in the local network. Only answers if the option "HTTP in
-    the local network" is on. Empty = port closed.
+    the local network" is on. Leave empty = port closed.
   8443/tcp: >-
     Port for HTTPS in the local network. Only answers if the option "HTTPS in
-    the local network" is on. Empty = port closed.
+    the local network" is on. Leave empty = port closed.

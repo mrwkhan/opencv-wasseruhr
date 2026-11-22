@@ -31,6 +31,7 @@ def jpeg() -> bytes:
 
 
 def _client(tmp_path, client=("testclient", 50000), **kwargs) -> TestClient:
+    kwargs.setdefault("sprache", "de")
     return TestClient(create_app(Konfig(daten_verzeichnis=tmp_path, **kwargs)), client=client)
 
 
@@ -91,6 +92,7 @@ def test_dekompressionsbombe_frischer_prozess():
     env = {k: v for k, v in os.environ.items() if k != "OPENCV_IO_MAX_IMAGE_PIXELS"}
     skript = (
         "import resource, sys\n"
+        "from app import sprache; sprache.einstellen('de')\n"
         "from app.erkennung import dekodiere_bild, BildFehler\n"
         "import cv2, numpy as np\n"
         "foto = cv2.imencode('.jpg', np.zeros((3000, 4000, 3), np.uint8))[1].tobytes()\n"
@@ -210,4 +212,4 @@ def test_browser_erlaubt_mehr_als_fuenf_vorkommastellen(tmp_path):
     with _client(tmp_path) as c:
         c.post("/ablesen", content=BEISPIEL.read_bytes(), headers=JPEG)
         assert r"\d{1,9}" in c.get("/").text
-    assert r"\d{1,9}" in verwaltungsseite.SEITE
+    assert r"\d{1,9}" in verwaltungsseite.seite("de")

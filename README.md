@@ -1,63 +1,70 @@
 # Wasseruhr-CV
 
+**English** · [Deutsch](README.de.md)
+
 [![CI](https://github.com/mrwkhan/opencv-wasseruhr/actions/workflows/ci.yaml/badge.svg)](https://github.com/mrwkhan/opencv-wasseruhr/actions/workflows/ci.yaml)
 
-Liest das Rollenzählwerk einer Wasseruhr per **klassischem Computer Vision** ab:
-OpenCV Template Matching, kein LLM, keine Cloud. Der Dienst lernt die Ziffern
-aus Kamerabildern mit bekanntem Zählerstand, erkennt sie danach selbstständig
-und schreibt den geprüften Zählerstand nach Home Assistant.
+Reads the roller counter of a water meter ("Wasseruhr" in German) with
+**classic computer vision**: OpenCV template matching, no LLM, no cloud. The
+service learns the digits from camera images with a known meter reading,
+then recognises them on its own and writes the checked reading to Home
+Assistant.
 
-Läuft als **Home-Assistant-Add-on** (z. B. auf dem Home Assistant Green) oder
-als eigenständiger Docker-Dienst – ohne weitere Werkzeuge.
+Runs as a **Home Assistant add-on** (e.g. on Home Assistant Green) or as a
+standalone Docker service – no other tools needed.
 
-- **Automatische Ablesung:** holt alle paar Minuten das Kamerabild aus Home
-  Assistant und schreibt nur sichere, plausible Werte (nur vorwärts, höchstens
-  so schnell, wie Wasser fließen kann) in einen Sensor fürs Energie-Dashboard
-  und optional in einen `input_number`-Helfer
-- **Initiales Modell** eingebaut ([wasseruhr_cv/modell](wasseruhr_cv/modell)),
-  beim ersten Start sofort einsatzbereit
-- Lernseite und Verwaltung in der Home-Assistant-Seitenleiste: nachtrainieren,
-  falsch gelernte Bilder korrigieren oder löschen, Vorlagen ansehen, Modell
-  als ZIP sichern und übertragen
-- Im Heimnetz optional per **HTTP und/oder HTTPS** erreichbar, Ports frei wählbar
-- Einfache HTTP-API (`POST /ablesen` mit dem JPEG) für eigene Anbindungen
+- **Automatic reading:** fetches the camera image from Home Assistant every
+  few minutes and writes only certain, plausible values (forward only, and no
+  faster than water can flow) to a sensor for the Energy dashboard and
+  optionally to an `input_number` helper
+- **Bundled initial model** ([wasseruhr_cv/modell](wasseruhr_cv/modell)),
+  ready to use on first start
+- Training page and admin page in the Home Assistant sidebar: train more,
+  correct or delete wrongly learned images, view templates, back up and
+  transfer the model as a ZIP
+- **English and German:** pages, messages, log and sensor. The pages follow
+  the browser language and can be switched on the page (DE/EN), the log and
+  sensor follow the Home Assistant language. See [Language](#language).
+- Optionally reachable in the local network via **HTTP and/or HTTPS**, ports
+  freely selectable
+- Simple HTTP API (`POST /ablesen` with the JPEG) for your own integrations
 
 ## Installation in Home Assistant
 
-[![Repository zu Home Assistant hinzufügen](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fmrwkhan%2Fopencv-wasseruhr)
+[![Add repository to Home Assistant](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fmrwkhan%2Fopencv-wasseruhr)
 
-Oder von Hand:
+Or by hand:
 
-1. Einstellungen → Add-ons → **Add-on-Store** → Menü (⋮) → **Repositories**
-2. `https://github.com/mrwkhan/opencv-wasseruhr` eintragen → **Hinzufügen**
-3. **Wasseruhr-CV** auswählen → **Installieren**. Das Image wird auf dem Gerät
-   gebaut (Python + OpenCV), das dauert einige Minuten.
-4. Im Reiter Info „In der Seitenleiste anzeigen“ und „Watchdog“ einschalten → **Starten**
+1. Settings → Add-ons → **Add-on Store** → menu (⋮) → **Repositories**
+2. Enter `https://github.com/mrwkhan/opencv-wasseruhr` → **Add**
+3. Select **Wasseruhr-CV** → **Install**. The image is built on the device
+   (Python + OpenCV), which takes a few minutes.
+4. On the Info tab, turn on "Show in sidebar" and "Watchdog" → **Start**
 
-Unterstützt: `aarch64` (Home Assistant Green/Yellow, Raspberry Pi 4/5 mit
-64-Bit-OS) und `amd64`. Einrichtung, Anlernen und Bedienung stehen in der
-[Add-on-Dokumentation](wasseruhr_cv/DOCS.md), die auch im Add-on unter
-„Dokumentation“ erscheint.
+Supported: `aarch64` (Home Assistant Green/Yellow, Raspberry Pi 4/5 with a
+64-bit OS) and `amd64`. Setup, training and usage are described in the
+[add-on documentation](wasseruhr_cv/DOCS.md), which also appears in the
+add-on under "Documentation".
 
-## Erste Schritte
+## Getting started
 
-1. **Kamera auswählen:** Seitenleiste → Wasseruhr → Verwaltung → Kamera aus der
-   Liste wählen (mit Vorschaubild) → Übernehmen.
-2. **ROIs prüfen:** Lernseite → „Kamera jetzt ablesen“. Die eingezeichneten
-   Rechtecke müssen auf den Ziffernfenstern liegen, sonst
-   [ROIs anpassen](#rois-anpassen).
-3. **Modell:** Das initiale Modell wird beim ersten Start übernommen. Für eine
-   andere Uhr in der Verwaltung „Modell zurücksetzen“ und auf der Lernseite
-   anlernen: richtigen Zählerstand eintragen → „Mit diesem Bild lernen“, bis
-   jede Ziffer 0–9 einmal gelernt ist.
-4. **Fertig:** Ab jetzt steht der Zählerstand alle 5 Minuten in
-   `sensor.wasseruhr_cv_zaehlerstand`. Fürs Energie-Dashboard: Einstellungen →
-   Dashboards → Energie → Wasserverbrauch → diesen Sensor auswählen.
+1. **Select the camera:** sidebar → Wasseruhr → Admin → pick the camera from
+   the list (with preview) → Apply.
+2. **Check the ROIs:** training page → "Read camera now". The drawn
+   rectangles must sit on the digit windows, otherwise
+   [adjust the ROIs](#adjusting-the-rois).
+3. **Model:** the initial model is installed on first start. For a different
+   meter, use "Reset model" on the admin page and teach it on the training
+   page: enter the correct meter reading → "Learn from this image", until
+   every digit 0–9 has been learned once.
+4. **Done:** from now on the reading is in `sensor.wasseruhr_cv_zaehlerstand`
+   every 5 minutes. For the Energy dashboard: Settings → Dashboards → Energy
+   → Water consumption → select this sensor.
 
-Details zur Automatik, zu HTTP/HTTPS und allen Optionen stehen in der
-[Add-on-Dokumentation](wasseruhr_cv/DOCS.md).
+Details on automatic reading, HTTP/HTTPS and all options are in the
+[add-on documentation](wasseruhr_cv/DOCS.md).
 
-## Eigenständig mit Docker Compose
+## Standalone with Docker Compose
 
 ```bash
 git clone https://github.com/mrwkhan/opencv-wasseruhr.git
@@ -66,131 +73,159 @@ docker compose up -d --build
 curl http://localhost:8099/health        # -> {"ok":true}
 ```
 
-Lernseite: `http://<host>:8099/`, Verwaltung: `http://<host>:8099/admin`. Für
-die automatische Ablesung `KAMERA`, `HA_URL` und `HA_TOKEN` setzen (siehe
-[docker-compose.yml](docker-compose.yml)). Alle Daten liegen in `./data` und
-bleiben bei Neustarts und Updates erhalten:
+Training page: `http://<host>:8099/`, admin page: `http://<host>:8099/admin`.
+For automatic reading set `KAMERA`, `HA_URL` and `HA_TOKEN` (see
+[docker-compose.yml](docker-compose.yml)). All data lives in `./data` and
+survives restarts and updates:
 
 ```
 data/
-  lernbilder/   jedes an /lernen geschickte Bild, z. B. 20261109T172251000000Z_506.388.jpg
-  vorlagen/     daraus erzeugte Ziffern-Vorlagen, <ziffer>/<zeitstempel>_r<rolle>.png
+  lernbilder/   every image sent to /lernen, e.g. 20261109T172251000000Z_506.388.jpg
+  vorlagen/     digit templates created from them, <digit>/<timestamp>_r<wheel>.png
 ```
 
-Einstellungen über die Umgebungsvariablen in [docker-compose.yml](docker-compose.yml),
-siehe [Konfiguration](#konfiguration). Logs mit Ergebnis und Scores jedes Aufrufs:
+Settings via the environment variables in [docker-compose.yml](docker-compose.yml),
+see [Configuration](#configuration). Log with the result and scores of every
+call:
 
 ```bash
 docker compose logs -f
-# ... ablesen #12: wert=506.388 sicher=ja | r1=0(1.00/3:0.51) r2=0(1.00/5:0.53) ...
+# ... read #12: value=506.388 certain=yes | r1=0(1.00/3:0.51) r2=0(1.00/5:0.53) ...
 ```
 
-Format pro Rolle: `r<rolle>=<ziffer>(<score>/<zweitbeste>:<score2>)`, ein `!`
-markiert eine unsichere Rolle.
+Format per wheel: `r<wheel>=<digit>(<score>/<second best>:<score2>)`, a `!`
+marks an uncertain wheel.
 
-> **Sicherheit:** Der Dienst hat kein Passwort. Ports nur im Heimnetz
-> betreiben, nie im Router freigeben. Webseiten im Browser können ihm nichts
-> beibringen (Ursprungsprüfung), Bilder sind auf 10 MB und 25 Megapixel
-> begrenzt. Im Add-on sind HTTP und HTTPS im Heimnetz standardmäßig aus.
+> **Security:** the service has no password. Only run the ports in your local
+> network, never forward them in your router. Websites in the browser cannot
+> teach it anything (origin check), images are limited to 10 MB and 25
+> megapixels. In the add-on, HTTP and HTTPS in the local network are off by
+> default.
 
-> **Datenschutz:** Laufende Lernbilder zeigen die eigene Wasseruhr samt
-> Zählerständen. `data/` und Modell-Exporte (`*.zip`) sind deshalb per
-> `.gitignore` ausgeschlossen. Das mitgelieferte Modell zeigt nur das Zählwerk;
-> ein Test stellt sicher, dass das so bleibt.
+> **Privacy:** running training images show your own water meter including
+> its readings. `data/` and model exports (`*.zip`) are therefore excluded via
+> `.gitignore`. The bundled model shows only the counter; a test makes sure it
+> stays that way.
 
-## Lernbilder & Lerneffekt
+## Language
 
-**Jedes Bild, das an `/lernen` geschickt wird, wird aufbewahrt**, byte-genau
-unter `lernbilder/<zeitstempel>_<wert>.jpg`. Die Vorlagen sind nur ein
-Zwischenergebnis und lassen sich jederzeit aus den Lernbildern neu erzeugen.
+All pages, messages, the log and the sensor exist in **English and German**.
 
-| `LERNEFFEKT` | Beim Start | `POST /lernen` |
-|--------------|------------|----------------|
-| `an` (Standard) | Vorlagen werden **komplett aus allen Lernbildern neu aufgebaut** (älteste zuerst) | Bild archivieren **und** sofort als Vorlage lernen |
-| `aus` | Vorhandene Vorlagen werden unverändert geladen | Bild **nur** archivieren |
+| What | Language |
+|---|---|
+| Training page, admin page, API error messages | Switch on the page (DE/EN, remembered in a cookie) → option `sprache` → browser language → service language |
+| Log, sensor name and `reason` attribute | Option `sprache`; with `auto` the language of Home Assistant, without Home Assistant English |
+| Add-on options in Home Assistant | Home Assistant user language (`translations/`) |
 
-Damit lässt sich zum Beispiel:
+The option `sprache` (Docker: `SPRACHE`) accepts `auto` (default), `de` or
+`en`. Codes that automations rely on are language-neutral: the sensor
+attributes are `status`, `reason`, `recognized`, `last_check` and `source`,
+and `status` is one of `accepted`, `unchanged`, `rejected`, `error`, `set`.
 
-- **die Erkennung einfrieren**: Mit `aus` werden weiter Lernbilder gesammelt,
-  die Erkennung bleibt unverändert. Später mit `an` alles nachlernen.
-- **Falsches entfernen**: In der Verwaltung das Lernbild korrigieren oder
-  löschen, die Vorlagen werden sofort neu aufgebaut.
-- **ROIs ändern**: Neue ROIs setzen und mit `an` neu starten. Die Vorlagen
-  entstehen aus den Original-Bildern neu, nichts muss neu angelernt werden.
+**Adding a language:** copy `wasseruhr_cv/app/texte/en.json` to
+`<code>.json`, translate the values (keep the keys and `{placeholders}`), add
+the code to `SPRACHEN` in `wasseruhr_cv/app/sprache.py` and to the `sprache`
+option in `config.yaml`, and add `wasseruhr_cv/translations/<code>.yaml`. The
+tests check that every catalogue has the same keys and placeholders.
 
-Fast identische Ziffern (Korrelation > 0.97) werden nicht doppelt gespeichert.
-Pro Ziffer bleiben höchstens `MAX_VORLAGEN_PRO_ZIFFER` Vorlagen, die Lernbilder
-selbst werden nie automatisch gelöscht. Kontrastlose Ziffern (Kamera dunkel
-oder überbelichtet) werden nie zur Vorlage.
+## Training images & learning
 
-Tipps: Bilder bei **unterschiedlicher Beleuchtung** lernen. Die letzte Rolle
-dreht sich laufend. Steht sie zwischen zwei Ziffern, die eintragen, die mehr
-vom Fenster einnimmt.
+**Every image sent to `/lernen` is kept**, byte for byte, as
+`lernbilder/<timestamp>_<value>.jpg`. The templates are only an intermediate
+result and can be rebuilt from the training images at any time.
 
-## ROIs anpassen
+| `LERNEFFEKT` | On start | `POST /lernen` |
+|--------------|----------|----------------|
+| `an` (default) | Templates are **completely rebuilt from all training images** (oldest first) | Archive the image **and** learn it as a template right away |
+| `aus` | Existing templates are loaded unchanged | **Only** archive the image |
 
-Jede Rolle des Zählwerks wird durch ein Rechteck (ROI) `[x1, y1, x2, y2]` in
-Pixeln des Kamerabildes beschrieben: links oben `(x1, y1)`, rechts unten
-`(x2, y2)`. Die Liste geht von links (höchste Stelle) nach rechts, die
-**letzten 3 Rollen sind die Nachkommastellen** (Liter). Ohne Angabe gelten
-Standardwerte für ein 640×480-Bild mit 8 Rollen:
+This lets you, for example:
+
+- **freeze recognition**: with `aus`, training images keep being collected
+  while recognition stays unchanged. Later, learn everything with `an`.
+- **remove wrong data**: correct or delete the training image on the admin
+  page, the templates are rebuilt immediately.
+- **change ROIs**: set new ROIs and restart with `an`. The templates are
+  regenerated from the original images, nothing has to be taught again.
+
+Nearly identical digits (correlation > 0.97) are not stored twice. At most
+`MAX_VORLAGEN_PRO_ZIFFER` templates are kept per digit; the training images
+themselves are never deleted automatically. Digits without contrast (camera
+dark or overexposed) never become templates.
+
+Tips: learn images under **different lighting**. The last wheel turns all the
+time. If it sits between two digits, enter the one that fills more of the
+window.
+
+## Adjusting the ROIs
+
+Each wheel of the counter is described by a rectangle (ROI) `[x1, y1, x2, y2]`
+in pixels of the camera image: top left `(x1, y1)`, bottom right `(x2, y2)`.
+The list goes from left (highest digit) to right, the **last 3 wheels are the
+decimals** (litres). Without a value, defaults for a 640×480 image with 8
+wheels apply:
 
 ```json
 [[130,144,162,196],[173,144,205,196],[216,144,248,196],[260,144,292,196],
  [304,144,336,196],[347,144,379,196],[391,144,423,196],[435,144,467,196]]
 ```
 
-So findest du die Werte für deine Kamera:
+How to find the values for your camera:
 
-1. Ein Kamerabild in einem Bildprogramm öffnen und für jede Ziffer die
-   Pixelkoordinaten des Fensters ablesen. Das Rechteck darf etwas größer als
-   die Ziffer sein, links und rechts werden ohnehin je 3 px abgeschnitten.
-2. Als einzeiliges JSON eintragen: im Add-on in der Option `rois`, in Docker
-   in der Variable `ROIS`.
-3. Ein Bild ablesen und die Lernseite öffnen. Die ROIs sind eingezeichnet,
-   darunter stehen die aufbereiteten Ziffern so, wie der Matcher sie sieht.
-   Jede Ziffer sollte vollständig und mittig zu sehen sein.
+1. Open a camera image in an image editor and read the pixel coordinates of
+   each digit window. The rectangle may be slightly larger than the digit,
+   3 px are cut off on the left and right anyway.
+2. Enter them as single-line JSON: in the add-on in the option `rois`, in
+   Docker in the variable `ROIS`.
+3. Read an image and open the training page. The ROIs are drawn in, below
+   them the processed digits as the matcher sees them. Every digit should be
+   fully visible and centred.
 
-## Konfiguration
+## Configuration
 
-Im Add-on über die Optionen (Reiter Konfiguration), in Docker über
-Umgebungsvariablen:
+In the add-on via the options (Configuration tab), in Docker via
+environment variables:
 
-| Variable | Add-on-Option | Standard | Bedeutung |
+| Variable | Add-on option | Default | Meaning |
 |---|---|---|---|
-| `LERNEFFEKT` | `lerneffekt` | `an` | `an`/`aus`, siehe [Lerneffekt](#lernbilder--lerneffekt) |
-| `ROIS` | `rois` | siehe oben | JSON-Liste `[[x1,y1,x2,y2], …]`, eine pro Rolle, mindestens 4 |
-| `MIN_SCORE` | `min_score` | `0.70` | Mindest-Score der besten Ziffer für „sicher“ |
-| `MIN_ABSTAND` | `min_abstand` | `0.08` | Mindestabstand zur zweitbesten Ziffer |
-| `MAX_VORLAGEN_PRO_ZIFFER` | `max_vorlagen_pro_ziffer` | `30` | ältere Vorlagen fallen heraus |
-| `VERSCHIEBUNG` | `verschiebung` | `3` | Suchbereich des Template Matchings in px (±) |
-| `KAMERA` | `kamera` | – | Kamera-Entität, die abgelesen wird |
-| `INTERVALL_MINUTEN` | `intervall_minuten` | `5` | automatische Ablesung, `0` = aus (braucht `KAMERA` und HA-Zugang) |
-| `SENSOR` | `sensor` | `sensor.wasseruhr_cv_zaehlerstand` | Ziel für den Zählerstand, wird angelegt bzw. überschrieben; `-` = kein Sensor |
-| `INPUT_NUMBER` | `input_number` | – | optional zusätzlich ein vorhandener Zahlen-Helfer (fehlt er, wird das gemeldet) |
-| `MAX_M3_PRO_STUNDE` | `max_m3_pro_stunde` | `3` | schnellerer Anstieg = Lesefehler |
-| `TOLERANZ_M3` | `toleranz_m3` | `0.002` | kleine Rückwärts-Abweichung ignorieren |
-| `ALLE_ZIFFERN_GELERNT` | `alle_ziffern_gelernt` | `an` | erst schreiben, wenn 0–9 gelernt sind |
-| `HTTP` / `HTTP_PORT` | `http` | `aus` / `8080` | zusätzlicher HTTP-Listener (Add-on: Port unter Netzwerk, Standard 8099) |
-| `HTTPS` / `HTTPS_PORT` | `https` | `aus` / `8443` | zusätzlicher HTTPS-Listener (Add-on: Port unter Netzwerk, Standard 8100) |
-| `ZERTIFIKAT` / `SCHLUESSEL` | `zertifikat` / `schluessel` | `fullchain.pem` / `privkey.pem` | relativ zu `SSL_VERZEICHNIS` (`/ssl`) oder absolut; fehlt es, wird ein selbstsigniertes erzeugt |
-| `PORT` | – | `8099` | Hauptport (Add-on: Ingress/intern, Docker: der freigegebene Port) |
-| `ADMIN_NUR_INGRESS` | `admin_nur_ueber_ingress` | Docker `aus`, Add-on `an` | Verwaltung nur über die HA-Seitenleiste |
-| `LOG_LEVEL` | `log_level` | `INFO` | `DEBUG` zeigt auch übersprungene Duplikate |
-| `HA_URL` | – | `http://supervisor/core/api` | REST-API von HA, für Docker z. B. `http://homeassistant.local:8123/api` |
-| `HA_TOKEN` | – | im Add-on automatisch | Langlebiges Zugriffstoken (Docker: in `.env`, nie ins Repository) |
-| `DATA_DIR` | – | `/data` | Datenverzeichnis mit `lernbilder/` und `vorlagen/` |
-| `MODELL_DIR` | – | `/opt/wasseruhr/modell` | Initiales Modell, wird beim ersten Start in ein leeres `DATA_DIR` übernommen |
+| `LERNEFFEKT` | `lerneffekt` | `an` | `an`/`aus` (also `on`/`off`), see [learning](#training-images--learning) |
+| `ROIS` | `rois` | see above | JSON list `[[x1,y1,x2,y2], …]`, one per wheel, at least 4 |
+| `MIN_SCORE` | `min_score` | `0.70` | minimum score of the best digit for "certain" |
+| `MIN_ABSTAND` | `min_abstand` | `0.08` | minimum margin to the second-best digit |
+| `MAX_VORLAGEN_PRO_ZIFFER` | `max_vorlagen_pro_ziffer` | `30` | older templates are dropped |
+| `VERSCHIEBUNG` | `verschiebung` | `3` | search range of the template matching in px (±) |
+| `KAMERA` | `kamera` | – | camera entity that is read |
+| `INTERVALL_MINUTEN` | `intervall_minuten` | `5` | automatic reading, `0` = off (needs `KAMERA` and HA access) |
+| `SENSOR` | `sensor` | `sensor.wasseruhr_cv_zaehlerstand` | target for the meter reading, created or overwritten; `-`/`off` = no sensor |
+| `INPUT_NUMBER` | `input_number` | – | optionally also an existing number helper (reported if missing) |
+| `MAX_M3_PRO_STUNDE` | `max_m3_pro_stunde` | `3` | faster increase = reading error |
+| `TOLERANZ_M3` | `toleranz_m3` | `0.002` | ignore small backward deviations |
+| `ALLE_ZIFFERN_GELERNT` | `alle_ziffern_gelernt` | `an` | only write once 0–9 are learned |
+| `HTTP` / `HTTP_PORT` | `http` | `aus` / `8080` | additional HTTP listener (add-on: port under Network, default 8099) |
+| `HTTPS` / `HTTPS_PORT` | `https` | `aus` / `8443` | additional HTTPS listener (add-on: port under Network, default 8100) |
+| `ZERTIFIKAT` / `SCHLUESSEL` | `zertifikat` / `schluessel` | `fullchain.pem` / `privkey.pem` | relative to `SSL_VERZEICHNIS` (`/ssl`) or absolute; if missing, a self-signed one is created |
+| `SPRACHE` | `sprache` | `auto` | `auto`, `de` or `en`, see [Language](#language) |
+| `PORT` | – | `8099` | main port (add-on: ingress/internal, Docker: the published port) |
+| `ADMIN_NUR_INGRESS` | `admin_nur_ueber_ingress` | Docker `aus`, add-on `an` | admin page only via the HA sidebar |
+| `LOG_LEVEL` | `log_level` | `INFO` | `DEBUG` also shows skipped duplicates |
+| `HA_URL` | – | `http://supervisor/core/api` | Home Assistant REST API, for Docker e.g. `http://homeassistant.local:8123/api` |
+| `HA_TOKEN` | – | automatic in the add-on | long-lived access token (Docker: in `.env`, never in the repository) |
+| `DATA_DIR` | – | `/data` | data directory with `lernbilder/` and `vorlagen/` |
+| `MODELL_DIR` | – | `/opt/wasseruhr/modell` | initial model, copied into an empty `DATA_DIR` on first start |
+
+The option and variable names are German and stay that way, so existing
+configurations keep working.
 
 ## API
 
-Alle Bild-Endpunkte erwarten das **rohe JPEG als Request-Body**
-(`Content-Type: image/jpeg`), kein Multipart-Formular.
+All image endpoints expect the **raw JPEG as the request body**
+(`Content-Type: image/jpeg`), not a multipart form. Error messages
+(`detail`) follow the `Accept-Language` header (English or German).
 
-### `POST /ablesen`
+### `POST /ablesen` (read)
 
 ```bash
-curl -X POST -H "Content-Type: image/jpeg" --data-binary @bild.jpg http://localhost:8099/ablesen
+curl -X POST -H "Content-Type: image/jpeg" --data-binary @image.jpg http://localhost:8099/ablesen
 ```
 
 ```json
@@ -206,125 +241,134 @@ curl -X POST -H "Content-Type: image/jpeg" --data-binary @bild.jpg http://localh
 }
 ```
 
-- `wert`: alle Ziffern zusammengesetzt, die letzten 3 sind Nachkommastellen
-  (`00506388` → `506.388`). Auch bei `sicher: false` die beste Schätzung,
-  `null` nur ohne jede Vorlage.
-- `sicher`: `true` nur, wenn für **jede** Rolle `score >= MIN_SCORE` und
-  `score - score2 >= MIN_ABSTAND` gilt.
-- `fehlende_vorlagen`: Ziffern 0–9 ohne Vorlage. Solange die Liste nicht leer
-  ist, kann eine nie gelernte Ziffer als ähnliche erkannt werden (z. B. 4 als 8).
-  Eigene Auswertungen sollten das prüfen; die eingebaute Automatik tut es.
+- `wert` (value): all digits combined, the last 3 are decimals
+  (`00506388` → `506.388`). Also the best guess when `sicher: false`, `null`
+  only without any template.
+- `sicher` (certain): `true` only if `score >= MIN_SCORE` and
+  `score - score2 >= MIN_ABSTAND` hold for **every** wheel (`rolle`).
+- `fehlende_vorlagen` (missing templates): digits 0–9 without a template.
+  While the list is not empty, a never-learned digit can be recognised as a
+  similar one (e.g. 4 as 8). Your own integrations should check this; the
+  built-in automatic reading does.
 
-### `POST /lernen?wert=506.388`
+### `POST /lernen?wert=506.388` (learn)
 
 ```bash
-curl -X POST -H "Content-Type: image/jpeg" --data-binary @bild.jpg "http://localhost:8099/lernen?wert=506.388"
+curl -X POST -H "Content-Type: image/jpeg" --data-binary @image.jpg "http://localhost:8099/lernen?wert=506.388"
 ```
 
 ```json
 {"gespeichert": 8, "vorlagen_pro_ziffer": {"0": 3, "1": 0, "...": 0, "9": 0}}
 ```
 
-Archiviert das Bild. Mit `LERNEFFEKT=an` wird der Wert in die Ziffern zerlegt
-(`506.388` → `0 0 5 0 6 3 8 8`) und jede Ziffer als Vorlage gelernt. Ein Komma
-als Dezimaltrenner wird akzeptiert. **Ohne Body mit `ablesung=<nr>`** wird das
-Bild einer der letzten 20 Ablesungen gelernt und gleich neu abgelesen.
+Archives the image. With `LERNEFFEKT=an` the value is split into digits
+(`506.388` → `0 0 5 0 6 3 8 8`) and every digit is learned as a template. A
+comma as decimal separator is accepted. **Without a body and with
+`ablesung=<nr>`**, the image of one of the last 20 readings is learned and
+read again right away.
 
-### `POST /kamera-ablesen`
+### `POST /kamera-ablesen` (read camera)
 
-Holt das aktuelle Bild der Kamera `KAMERA` über die Home-Assistant-API und
-liest es ab. Antwort wie `/ablesen` plus `nr` für die Lernseite (`/?nr=<nr>`).
-`400` ohne Kamera oder Token, `502` wenn die Kamera nicht erreichbar ist.
+Fetches the current image of the camera `KAMERA` via the Home Assistant API
+and reads it. Response like `/ablesen` plus `nr` for the training page
+(`/?nr=<nr>`). `400` without camera or token, `502` if the camera is not
+reachable.
 
 ### `GET /status`, `GET /debug.png`, `GET /health`, `GET /`
 
-| Endpunkt | Antwort |
+| Endpoint | Response |
 |---|---|
-| `GET /status` | `{"vorlagen_pro_ziffer": {…}, "fehlende_vorlagen": […], "lerneffekt": true, "lernbilder": 21}` |
-| `GET /debug.png?letztes=1` / `?nr=<nr>` | Kamerabild mit ROIs (grün = sicher, rot = unsicher) und aufbereiteten Ziffern |
+| `GET /status` | `{"vorlagen_pro_ziffer": {…}, "fehlende_vorlagen": […], "lerneffekt": true, "lernbilder": 21, "zaehlerstand": 506.388}` |
+| `GET /debug.png?letztes=1` / `?nr=<nr>` | camera image with ROIs (green = certain, red = uncertain) and processed digits |
 | `GET /health` | `{"ok": true}` |
-| `GET /` | Lernseite, `?nr=<nr>` öffnet eine der letzten 20 Ablesungen |
+| `GET /` | training page, `?nr=<nr>` opens one of the last 20 readings, `?sprache=en\|de` switches the language |
 
-### `GET /admin` – Verwaltung
+### `GET /admin` – admin page
 
-| Endpunkt | Zweck |
+| Endpoint | Purpose |
 |---|---|
-| `GET /admin` | Verwaltungsseite |
-| `GET /admin/info` | Version, Einstellungen, Vorlagen pro Ziffer |
-| `GET /admin/ablesungen` | letzte 20 Ablesungen, neueste zuerst |
-| `GET /admin/lernbilder` | alle Lernbilder, neueste zuerst |
-| `GET /admin/lernbilder/<name>[?ausschnitt=1]` | Original bzw. nur das Zählwerk |
-| `POST /admin/lernbilder/<name>/wert?wert=506.388` | Wert korrigieren (Zeitstempel bleibt) |
-| `POST /admin/lernbilder/<name>/loeschen` | Lernbild löschen |
-| `GET /admin/vorlagen` | Vorlagen je Ziffer (PNG als Base64) |
-| `POST /admin/neu-aufbauen` | Vorlagen aus allen Lernbildern neu aufbauen |
-| `GET /admin/export.zip` | Modell-Export (`lernbilder/`, `vorlagen/`, `modell.json`) |
-| `POST /admin/import?modus=ergaenzen\|ersetzen` | ZIP als Body; `ergaenzen` übernimmt nur unbekannte Zeitstempel |
+| `GET /admin` | admin page |
+| `GET /admin/info` | version, settings, templates per digit |
+| `GET /admin/ablesungen` | last 20 readings, newest first |
+| `GET /admin/lernbilder` | all training images, newest first |
+| `GET /admin/lernbilder/<name>[?ausschnitt=1]` | original or only the counter |
+| `POST /admin/lernbilder/<name>/wert?wert=506.388` | correct the value (timestamp stays) |
+| `POST /admin/lernbilder/<name>/loeschen` | delete a training image |
+| `GET /admin/vorlagen` | templates per digit (PNG as Base64) |
+| `POST /admin/neu-aufbauen` | rebuild templates from all training images |
+| `GET /admin/export.zip` | model export (`lernbilder/`, `vorlagen/`, `modell.json`) |
+| `POST /admin/import?modus=ergaenzen\|ersetzen` | ZIP as body; `ergaenzen` (also `merge`) only takes unknown timestamps, `ersetzen` (also `replace`) replaces everything |
 
-Mit `ADMIN_NUR_INGRESS=an` beantwortet `/admin` nur Anfragen des
-Home-Assistant-Supervisors (Ingress), alle anderen bekommen `403`.
+With `ADMIN_NUR_INGRESS=an`, `/admin` only answers requests from the Home
+Assistant Supervisor (ingress), everyone else gets `403`.
 
-### Fehler
+### Errors
 
-| Status | Wann |
+| Status | When |
 |---|---|
-| `400` | leerer Body, unlesbares oder zu großes Bild (über 25 Megapixel), ROI außerhalb des Bildes, ungültiger `wert`, beschädigtes ZIP |
-| `403` | Browser-Anfrage von einer fremden Webseite (Origin ≠ Host), oder `/admin` ohne Ingress bei `ADMIN_NUR_INGRESS=an` |
-| `404` | Ablesung nicht mehr im Speicher |
-| `413` | Body größer als 10 MB (Bilder) bzw. 300 MB (Modell-Import) |
-| `422` | `wert` fehlt |
+| `400` | empty body, unreadable or too large image (over 25 megapixels), ROI outside the image, invalid `wert`, damaged ZIP |
+| `403` | browser request from a foreign website (Origin ≠ Host), or `/admin` without ingress with `ADMIN_NUR_INGRESS=an` |
+| `404` | reading no longer in memory |
+| `413` | body larger than 10 MB (images) or 300 MB (model import) |
+| `422` | `wert` missing |
 
-Antwort jeweils als `{"detail": "<Beschreibung>"}`. Schreibende Anfragen mit
-einem `Origin`-Header werden nur angenommen, wenn er zum `Host` passt.
-Programme wie curl senden keinen `Origin` und sind nicht betroffen.
+Response as `{"detail": "<description>"}`. Write requests with an `Origin`
+header are only accepted if it matches `Host`. Programs like curl do not send
+an `Origin` and are not affected.
 
-## So funktioniert die Erkennung
+## How recognition works
 
-1. **Ausschneiden:** pro ROI ein Ausschnitt, links/rechts je 3 px gekürzt.
-2. **„Tinte“:** `255 - min(Blau, Grün)`. Schwarze **und** rote Ziffern
-   erscheinen hell auf dunklem Grund, egal welche Farbe die Beleuchtung hat.
-3. **Normieren:** MINMAX auf 0–255, GaussianBlur 3×3, Größe 24×40 px.
-4. **Vergleichen:** `cv2.matchTemplate` mit `TM_CCOEFF_NORMED` gegen jede
-   Vorlage, mit ±`VERSCHIEBUNG` px Spielraum. Der Score einer Ziffer ist das
-   beste Ergebnis über alle ihre Vorlagen.
+1. **Cut out:** one crop per ROI, 3 px trimmed on the left and right.
+2. **"Ink":** `255 - min(blue, green)`. Black **and** red digits appear
+   bright on a dark background, whatever the colour of the lighting.
+3. **Normalise:** MINMAX to 0–255, GaussianBlur 3×3, size 24×40 px.
+4. **Compare:** `cv2.matchTemplate` with `TM_CCOEFF_NORMED` against every
+   template, with ±`VERSCHIEBUNG` px leeway. The score of a digit is the best
+   result over all its templates.
 
-## Entwicklung
+## Development
 
 ```bash
 python3.12 -m venv .venv
 .venv/bin/pip install -r requirements-dev.txt
 .venv/bin/python -m pytest
-DATA_DIR=./data .venv/bin/python wasseruhr_cv/start.py     # lokal auf Port 8099
+DATA_DIR=./data .venv/bin/python wasseruhr_cv/start.py     # locally on port 8099
 ```
 
 ```
-repository.yaml          macht das Repository zum Home-Assistant-Add-on-Repository
-wasseruhr_cv/            das Add-on (Build-Kontext für HA und Docker Compose)
-  config.yaml            Add-on-Definition: Optionen, Ingress, Ports
-  Dockerfile, start.py   Image und Start (Optionen -> Umgebungsvariablen)
-  DOCS.md, CHANGELOG.md  im Add-on angezeigte Dokumentation
-  app/                   der Dienst (FastAPI + OpenCV)
-    erkennung.py         Aufbereitung, Template Matching
-    vorlagen.py          Vorlagen speichern, deduplizieren, neu aufbauen
-    lernbilder.py        Archiv aller Lernbilder
-    modell.py            Modell-Export/-Import (ZIP)
-    verwaltung.py        /admin, verwaltungsseite.py ihr HTML
-    lernseite.py         Lernseite, debugbild.py /debug.png
-    automatik.py         Ablesen im Intervall, Plausibilität, nach HA schreiben
-    ha.py, kamera.py     REST-API von Home Assistant (Zustände, Dienste, Kamera)
-    schutz.py            Ursprungsprüfung, Größenlimits, Sicherheits-Header
-    server.py            Hauptport + optional HTTP/HTTPS in einem Prozess
-    main.py              Endpunkte, Logging
-  modell/                initiales Modell: lernbilder/ (nur Zählwerk, PNG), vorlagen/
-tests/                   pytest; Testbilder bis auf das Zählwerk geschwärzt
-docker-compose.yml       eigenständiger Betrieb
+repository.yaml          makes the repository a Home Assistant add-on repository
+wasseruhr_cv/            the add-on (build context for HA and Docker Compose)
+  config.yaml            add-on definition: options, ingress, ports
+  translations/          option texts in Home Assistant (de, en)
+  Dockerfile, start.py   image and start (options -> environment variables)
+  DOCS.md, CHANGELOG.md  documentation shown in the add-on (English and German)
+  app/                   the service (FastAPI + OpenCV)
+    erkennung.py         preprocessing, template matching
+    vorlagen.py          store, deduplicate and rebuild templates
+    lernbilder.py        archive of all training images
+    modell.py            model export/import (ZIP)
+    verwaltung.py        /admin, verwaltungsseite.py its HTML
+    lernseite.py         training page, debugbild.py /debug.png
+    automatik.py         reading at intervals, plausibility, writing to HA
+    ha.py, kamera.py     Home Assistant REST API (states, services, camera)
+    schutz.py            origin check, size limits, security headers
+    sprache.py           English/German: language selection, translation
+    texte/               text catalogues de.json, en.json
+    server.py            main port + optional HTTP/HTTPS in one process
+    main.py              endpoints, logging
+  modell/                initial model: lernbilder/ (counter only, PNG), vorlagen/
+tests/                   pytest; test images blacked out except for the counter
+docker-compose.yml       standalone operation
 ```
 
-**Neue Version veröffentlichen:** Version in `wasseruhr_cv/config.yaml`,
-`wasseruhr_cv/app/__init__.py` und `pyproject.toml` erhöhen (ein Test prüft,
-dass alle gleich sind), Eintrag in `wasseruhr_cv/CHANGELOG.md`, auf `main`
-pushen. Home Assistant bietet das Update dann im Add-on an.
+The code itself (identifiers, comments) is German; everything users see is
+available in both languages.
 
-## Lizenz
+**Publishing a new version:** raise the version in `wasseruhr_cv/config.yaml`,
+`wasseruhr_cv/app/__init__.py` and `pyproject.toml` (a test checks that all
+are equal), add an entry to `wasseruhr_cv/CHANGELOG.md`, push to `main`. Home
+Assistant then offers the update in the add-on.
+
+## License
 
 [MIT](LICENSE)

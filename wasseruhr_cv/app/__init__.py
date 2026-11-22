@@ -1,8 +1,8 @@
-"""Wasseruhr-CV: liest eine Wasseruhr per klassischem Computer Vision ab."""
+"""Wasseruhr-CV: liest eine Wasseruhr per klassischem Computer Vision ab (Deutsch/Englisch)."""
 
 import os
 
-__version__ = "1.4.3"
+__version__ = "1.5.0"
 
 # Schutz vor Dekompressionsbomben: Ein JPEG von wenigen hundert Bytes kann
 # 30000x30000 Pixel behaupten und beim Dekodieren Gigabytes anfordern. OpenCV

@@ -21,6 +21,7 @@ def jpeg() -> bytes:
 
 
 def _client(tmp_path: Path, **kwargs) -> TestClient:
+    kwargs.setdefault("sprache", "de")
     return TestClient(create_app(Konfig(daten_verzeichnis=tmp_path, **kwargs)))
 
 
@@ -257,7 +258,8 @@ def test_lernen_aus_ablesung_ohne_body(client, jpeg, tmp_path):
     assert next((tmp_path / "lernbilder").iterdir()).read_bytes() == jpeg
     # gleiches Bild wurde direkt neu abgelesen (#2) und ist jetzt sicher
     assert client.get("/debug.png?nr=2").status_code == 200
-    assert "sicher</span>" in client.get("/?nr=2").text and "unsicher" not in client.get("/?nr=2").text
+    seite = client.get("/?nr=2").text
+    assert '<span class="gut">sicher</span>' in seite and '<span class="schlecht">' not in seite
 
 
 def test_lernen_nimmt_genau_das_gezeigte_bild(client, jpeg, tmp_path):

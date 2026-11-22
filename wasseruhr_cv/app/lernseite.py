@@ -5,6 +5,8 @@ from __future__ import annotations
 from datetime import datetime
 from html import escape
 
+from .sprache import SPRACHEN, STANDARD, fuer_browser, uebersetzen
+
 # Gemeinsames Aussehen von Lernseite und Verwaltung. Alle Links sind relativ,
 # damit beide Seiten auch hinter dem Home-Assistant-Ingress funktionieren.
 BASIS_CSS = """
@@ -19,8 +21,12 @@ BASIS_CSS = """
   body { margin:0; background:var(--bg); color:var(--text);
          font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
   main { max-width:760px; margin:0 auto; padding:20px 16px 40px; }
-  h1 { font-size:1.35rem; margin:0 0 10px; }
+  header.kopf { display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin:0 0 10px; }
+  h1 { font-size:1.35rem; margin:0; }
   h2 { font-size:1.05rem; margin:0 0 8px; }
+  nav.sprachen { display:flex; gap:2px; font-size:.85rem; }
+  nav.sprachen a { padding:2px 8px; border-radius:6px; border:1px solid transparent; color:var(--leise); text-decoration:none; }
+  nav.sprachen a[aria-current="true"] { color:var(--text); border-color:var(--rand); font-weight:600; }
   nav.tabs { display:flex; gap:4px; margin:0 0 14px; border-bottom:1px solid var(--rand); }
   nav.tabs a { padding:8px 12px; color:var(--leise); text-decoration:none;
                border-bottom:2px solid transparent; margin-bottom:-1px; }
@@ -47,7 +53,7 @@ BASIS_CSS = """
 """
 
 _SEITE = """<!doctype html>
-<html lang="de">
+<html lang="{lang}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -56,8 +62,7 @@ _SEITE = """<!doctype html>
 </head>
 <body>
 <main>
-  <h1>Wasseruhr-CV</h1>
-  {navigation}
+  {kopf}
   <div class="chips">{chips}</div>
   {inhalt}
 </main>
@@ -66,9 +71,15 @@ _SEITE = """<!doctype html>
 </html>
 """
 
-_SKRIPT = """<script>
+# Gemeinsamer Anfang der Seitenskripte: Texte der Sprache und t() zum Einsetzen
+_VORSPANN = r"""const LANG = "@@LANG@@", T = @@TEXTE@@;
+const t = (k, w = {}) => (T[k] ?? k).replace(/\{(\w+)\}/g, (m, n) => n in w ? w[n] : m);
+const LOCALE = (navigator.language || "").toLowerCase().startsWith(LANG) ? navigator.language : LANG;
+"""
+
+_SKRIPT = """
   document.querySelectorAll("[data-zeit]").forEach(el => {
-    el.textContent = new Date(el.dataset.zeit).toLocaleString("de-DE");
+    el.textContent = new Date(el.dataset.zeit).toLocaleString(LOCALE);
   });
   const form = document.getElementById("lernen");
   form?.addEventListener("submit", async (ev) => {
@@ -77,46 +88,68 @@ _SKRIPT = """<script>
     const knopf = form.querySelector("button");
     const wert = form.wert.value.trim().replace(",", ".");
     if (!/^\\d{1,9}(\\.\\d{1,3})?$/.test(wert)) {
-      meldung.className = "meldung schlecht"; meldung.textContent = "Bitte im Format 506.388 eingeben."; return;
+      meldung.className = "meldung schlecht"; meldung.textContent = t("format"); return;
     }
-    knopf.disabled = true; meldung.className = "meldung leise"; meldung.textContent = "Lerne …";
+    knopf.disabled = true; meldung.className = "meldung leise"; meldung.textContent = t("lerne");
     try {
-      const r = await fetch(`lernen?wert=${encodeURIComponent(wert)}&ablesung=${form.dataset.nr}`, {method: "POST"});
+      const r = await fetch(`lernen?wert=${encodeURIComponent(wert)}&ablesung=${form.dataset.nr}`,
+        {method: "POST", headers: {"Accept-Language": LANG}});
       const d = await r.json();
       if (!r.ok) throw new Error(d.detail || r.status);
       meldung.className = "meldung gut";
-      meldung.textContent = `Gelernt: ${d.gespeichert} neue Vorlage(n). Bild wird neu abgelesen …`;
+      meldung.textContent = t("gelernt_neu_ablesen", {n: d.gespeichert});
       setTimeout(() => location.href = "./", 900);
     } catch (e) {
-      meldung.className = "meldung schlecht"; meldung.textContent = "Fehler: " + e.message; knopf.disabled = false;
+      meldung.className = "meldung schlecht"; meldung.textContent = t("fehler", {text: e.message}); knopf.disabled = false;
     }
   });
   const kamera = document.getElementById("kamera");
   kamera?.addEventListener("click", async () => {
     const meldung = document.getElementById("kamera-meldung");
-    kamera.disabled = true; meldung.className = "meldung leise"; meldung.textContent = "Hole Kamerabild …";
+    kamera.disabled = true; meldung.className = "meldung leise"; meldung.textContent = t("hole_bild");
     try {
-      const r = await fetch("kamera-ablesen", {method: "POST"});
+      const r = await fetch("kamera-ablesen", {method: "POST", headers: {"Accept-Language": LANG}});
       const d = await r.json();
       if (!r.ok) throw new Error(d.detail || r.status);
       location.href = `./?nr=${d.nr}`;
     } catch (e) {
-      meldung.className = "meldung schlecht"; meldung.textContent = "Fehler: " + e.message; kamera.disabled = false;
+      meldung.className = "meldung schlecht"; meldung.textContent = t("fehler", {text: e.message}); kamera.disabled = false;
     }
   });
-</script>"""
+"""
 
 
-def navigation(aktiv: str, verwaltung: bool) -> str:
-    """Reiter Nachlernen / Verwaltung – entfällt, wenn die Verwaltung hier nicht erreichbar ist."""
-    if not verwaltung:
-        return ""
-    reiter = [("./", "Nachlernen", "lernen"), ("admin", "Verwaltung", "admin")]
-    aktuell = ' aria-current="page"'
-    links = "".join(
-        f'<a href="{href}"{aktuell if name == aktiv else ""}>{text}</a>' for href, text, name in reiter
+def skript(sprache: str, code: str) -> str:
+    """<script> mit den Texten der Sprache, t() und LOCALE vor dem eigentlichen Code."""
+    vorspann = _VORSPANN.replace("@@LANG@@", sprache).replace("@@TEXTE@@", fuer_browser(sprache))
+    return f"<script>\n{vorspann}{code}</script>"
+
+
+def _aktuell(ja: bool, wert: str) -> str:
+    return f' aria-current="{wert}"' if ja else ""
+
+
+def kopf(aktiv: str, verwaltung: bool, sprache: str, abfrage: str = "") -> str:
+    """Überschrift mit Sprachumschalter, darunter die Reiter Nachlernen / Verwaltung.
+    Die Reiter entfallen, wenn die Verwaltung hier nicht erreichbar ist. `abfrage`
+    bleibt beim Umschalten erhalten (z. B. "nr=5&")."""
+    umschalter = "".join(
+        f'<a href="?{abfrage}sprache={s}" hreflang="{s}" lang="{s}"{_aktuell(s == sprache, "true")}>{s.upper()}</a>'
+        for s in SPRACHEN
     )
-    return f'<nav class="tabs">{links}</nav>'
+    html = (
+        '<header class="kopf"><h1>Wasseruhr-CV</h1>'
+        f'<nav class="sprachen" aria-label="{escape(uebersetzen("seite.sprache", sprache))}">{umschalter}</nav>'
+        "</header>"
+    )
+    if verwaltung:
+        reiter = [("./", "seite.nav.lernen", "lernen"), ("admin", "seite.nav.verwaltung", "admin")]
+        links = "".join(
+            f'<a href="{href}"{_aktuell(name == aktiv, "page")}>{escape(uebersetzen(text, sprache))}</a>'
+            for href, text, name in reiter
+        )
+        html += f'<nav class="tabs">{links}</nav>'
+    return html
 
 
 def rendern(
@@ -133,57 +166,61 @@ def rendern(
     verwaltung: bool = True,
     automatik_intervall: int | None = None,
     zaehlerstand: float | None = None,
+    sprache: str = STANDARD,
 ) -> str:
+    def tx(schluessel: str, **werte) -> str:
+        return uebersetzen(schluessel, sprache, **werte)
+
     chips = [
-        f"Zählerstand {zaehlerstand:.3f} m³" if zaehlerstand is not None else "noch kein Zählerstand",
-        f"Automatik alle {automatik_intervall} min" if automatik_intervall else "Automatik aus",
-        f"Lerneffekt {'an' if lerneffekt else 'aus'}",
-        f"{lernbilder} Lernbild{'er' if lernbilder != 1 else ''}",
-        f"Ziffern ohne Vorlage: {', '.join(map(str, fehlende))}" if fehlende else "alle Ziffern 0–9 gelernt",
+        tx("ui.chip.stand", wert=f"{zaehlerstand:.3f}") if zaehlerstand is not None else tx("ui.chip.kein_stand"),
+        tx("ui.chip.automatik", n=automatik_intervall) if automatik_intervall else tx("ui.chip.automatik_aus"),
+        tx("ui.chip.lerneffekt_an" if lerneffekt else "ui.chip.lerneffekt_aus"),
+        tx("ui.chip.lernbilder_1" if lernbilder == 1 else "ui.chip.lernbilder_n", n=lernbilder),
+        tx("ui.chip.fehlend", liste=", ".join(map(str, fehlende))) if fehlende else tx("ui.chip.alle"),
     ]
     chips_html = "".join(f'<span class="chip">{escape(c)}</span>' for c in chips)
     kamera_knopf = (
-        '<button type="button" id="kamera" class="zweit">Kamera jetzt ablesen</button>' if kamera else ""
+        f'<button type="button" id="kamera" class="zweit">{escape(tx("ui.kamera_jetzt"))}</button>' if kamera else ""
     )
-    seite = dict(css=BASIS_CSS, navigation=navigation("lernen", verwaltung), chips=chips_html, skript=_SKRIPT)
+    seite = dict(
+        lang=sprache, css=BASIS_CSS, chips=chips_html, skript=skript(sprache, _SKRIPT),
+        kopf=kopf("lernen", verwaltung, sprache, f"nr={nr}&" if nr is not None else ""),
+    )
 
     if nr is None:
         hinweis = (
-            f"Die Automatik liest gleich und danach alle {automatik_intervall} Minuten ab – "
-            "oder sofort mit <b>Kamera jetzt ablesen</b>." if automatik_intervall
-            else "Mit <b>Kamera jetzt ablesen</b> holt sich der Dienst selbst ein Bild." if kamera
-            else 'Für die automatische Ablesung zuerst in der <a href="admin">Verwaltung</a> die Kamera auswählen.'
+            tx("lern.hinweis.automatik_html", n=automatik_intervall) if automatik_intervall
+            else tx("lern.hinweis.kamera_html") if kamera
+            else tx("lern.hinweis.keine_kamera_html") if verwaltung
+            else escape(tx("lern.hinweis.keine_kamera_option"))
         )
         inhalt = (
-            f'<div class="karte"><p>Noch kein Bild abgelesen. {hinweis}</p>'
-            f'<div class="zeile">{kamera_knopf}<a class="knopf zweit" href="./">Neu laden</a></div>'
+            f'<div class="karte"><p>{escape(tx("lern.leer"))} {hinweis}</p>'
+            f'<div class="zeile">{kamera_knopf}<a class="knopf zweit" href="./">{escape(tx("lern.neu_laden"))}</a></div>'
             '<div id="kamera-meldung" class="meldung leise"></div></div>'
         )
         return _SEITE.format(inhalt=inhalt, **seite)
 
     wert_text = "–" if wert is None else f"{wert:.3f}"
-    urteil = '<span class="gut">sicher</span>' if sicher else '<span class="schlecht">unsicher</span>'
-    hinweis_alt = (
-        "" if ist_neueste
-        else '<p class="leise">Inzwischen gibt es eine neuere Ablesung – gelernt wird trotzdem genau dieses Bild.</p>'
+    urteil = (
+        f'<span class="gut">{escape(tx("ui.sicher"))}</span>' if sicher
+        else f'<span class="schlecht">{escape(tx("ui.unsicher"))}</span>'
     )
-    hinweis_aus = (
-        '<p class="leise">Lerneffekt ist aus: Das Bild wird nur archiviert und beim nächsten Start '
-        "mit Lerneffekt gelernt.</p>" if not lerneffekt else ""
-    )
+    hinweis_alt = "" if ist_neueste else f'<p class="leise">{escape(tx("lern.neuere"))}</p>'
+    hinweis_aus = "" if lerneffekt else f'<p class="leise">{escape(tx("lern.lerneffekt_aus"))}</p>'
     inhalt = f"""<div class="karte">
-    <div class="leise">Ablesung #{nr} · <span data-zeit="{escape(zeit.isoformat())}"></span></div>
+    <div class="leise">{escape(tx("lern.ablesung", nr=nr))} · <span data-zeit="{escape(zeit.isoformat())}"></span></div>
     <div><span class="wert">{wert_text}</span> m³ · {urteil}</div>
     {hinweis_alt}
-    <img class="bild" src="debug.png?nr={nr}" alt="Kamerabild mit ROIs und aufbereiteten Ziffern">
+    <img class="bild" src="debug.png?nr={nr}" alt="{escape(tx("lern.bild_alt"))}">
     <form id="lernen" data-nr="{nr}" autocomplete="off">
-      <label for="wert">Richtiger Zählerstand auf diesem Bild (m³, 3 Nachkommastellen)</label>
+      <label for="wert">{escape(tx("lern.label"))}</label>
       <input id="wert" name="wert" inputmode="decimal" value="{'' if wert is None else wert_text}" placeholder="506.388">
-      <button type="submit">Mit diesem Bild lernen</button>
+      <button type="submit">{escape(tx("lern.knopf"))}</button>
     </form>
     <div id="meldung" class="meldung leise"></div>
     {hinweis_aus}
   </div>
-  <div class="zeile"><a class="knopf zweit" href="./">Neueste Ablesung</a>{kamera_knopf}</div>
+  <div class="zeile"><a class="knopf zweit" href="./">{escape(tx("lern.neueste"))}</a>{kamera_knopf}</div>
   <div id="kamera-meldung" class="meldung leise"></div>"""
     return _SEITE.format(inhalt=inhalt, **seite)

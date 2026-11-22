@@ -15,6 +15,8 @@ from urllib.parse import urlsplit
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
+from .sprache import T, aus_anfrage, uebersetzen
+
 INGRESS_IP = "172.30.32.2"  # Absender aller Ingress-Anfragen des HA-Supervisors
 MAX_BILD_BYTES = 10 * 1024 * 1024  # Kamerabilder sind typischerweise 20–200 KB
 UNSICHERE_METHODEN = {"POST", "PUT", "PATCH", "DELETE"}
@@ -49,7 +51,7 @@ def einrichten(app: FastAPI) -> None:
     async def schutz(request: Request, call_next):
         if fremder_ursprung(request):
             antwort = JSONResponse(
-                {"detail": "Anfrage von fremder Webseite abgelehnt"}, status_code=403
+                {"detail": uebersetzen("api.fremde_webseite", aus_anfrage(request))}, status_code=403
             )
         else:
             antwort = await call_next(request)
@@ -60,14 +62,14 @@ def einrichten(app: FastAPI) -> None:
 
 async def body_lesen(request: Request, max_bytes: int) -> bytes:
     """Liest den Request-Body, bricht aber ab, sobald er max_bytes überschreitet."""
-    zu_gross = HTTPException(status_code=413, detail=f"Body größer als {max_bytes // (1024 * 1024)} MB")
+    zu_gross = HTTPException(status_code=413, detail=T("api.body_zu_gross", mb=max_bytes // (1024 * 1024)))
     laenge = request.headers.get("content-length")
     if laenge is not None:
         try:
             if int(laenge) > max_bytes:
                 raise zu_gross
         except ValueError:
-            raise HTTPException(status_code=400, detail="Ungültige Content-Length") from None
+            raise HTTPException(status_code=400, detail=T("api.content_length")) from None
     teile, groesse = [], 0
     async for teil in request.stream():
         groesse += len(teil)

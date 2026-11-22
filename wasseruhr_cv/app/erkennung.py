@@ -9,6 +9,8 @@ from typing import Mapping, Sequence
 import cv2
 import numpy as np
 
+from .sprache import T
+
 ZIFFER_BREITE = 24
 ZIFFER_HOEHE = 40
 RAND_SEITLICH = 3  # px, die pro ROI links und rechts abgeschnitten werden
@@ -37,14 +39,14 @@ class ZiffernErgebnis:
 
 def dekodiere_bild(daten: bytes) -> np.ndarray:
     if not daten:
-        raise BildFehler("Leerer Request-Body – rohes JPEG erwartet")
+        raise BildFehler(T("bild.leer"))
     try:
         bild = cv2.imdecode(np.frombuffer(daten, np.uint8), cv2.IMREAD_COLOR)
     except cv2.error:
         # OPENCV_IO_MAX_IMAGE_PIXELS überschritten (siehe app/__init__.py)
-        raise BildFehler("Bild ist zu groß (Pixelzahl über der Grenze)") from None
+        raise BildFehler(T("bild.zu_gross")) from None
     if bild is None:
-        raise BildFehler("Body ist kein lesbares Bild – rohes JPEG erwartet")
+        raise BildFehler(T("bild.unlesbar"))
     return bild
 
 
@@ -65,8 +67,7 @@ def schneide_ziffern(bild: np.ndarray, rois: Sequence[Sequence[int]]) -> list[np
     for rolle, (x1, y1, x2, y2) in enumerate(rois, start=1):
         if x2 > breite or y2 > hoehe:
             raise BildFehler(
-                f"ROI der Rolle {rolle} {[x1, y1, x2, y2]} liegt außerhalb des Bildes "
-                f"({breite}x{hoehe}) – ROIS anpassen"
+                T("bild.roi_ausserhalb", rolle=rolle, roi=str([x1, y1, x2, y2]), breite=breite, hoehe=hoehe)
             )
         ziffern.append(bereite_ziffer_auf(bild[y1:y2, x1:x2]))
     return ziffern
@@ -144,9 +145,9 @@ def zusammensetzen(ergebnisse: Sequence[ZiffernErgebnis], nachkommastellen: int)
 def zerlege_wert(wert: float, anzahl_rollen: int, nachkommastellen: int) -> list[int]:
     """506.388 -> [0,0,5,0,6,3,8,8] (entspricht "%09.3f" ohne Punkt bei 8 Rollen)."""
     if not np.isfinite(wert) or wert < 0:
-        raise ValueError("Wert muss eine nicht-negative Zahl sein")
+        raise ValueError(T("wert.negativ"))
     breite = anzahl_rollen + 1  # +1 für den Dezimalpunkt
     text = f"{wert:0{breite}.{nachkommastellen}f}".replace(".", "")
     if len(text) != anzahl_rollen:
-        raise ValueError(f"Wert {wert} passt nicht in {anzahl_rollen} Ziffern")
+        raise ValueError(T("wert.zu_lang", wert=wert, n=anzahl_rollen))
     return [int(c) for c in text]

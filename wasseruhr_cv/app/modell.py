@@ -28,6 +28,7 @@ import numpy as np
 
 from .erkennung import ZIFFER_BREITE, ZIFFER_HOEHE
 from .lernbilder import LernbildArchiv, ist_bild, parse_name
+from .sprache import T
 from .vorlagen import ZIFFERN, Bestand, Vorlage, VorlagenSpeicher
 
 log = logging.getLogger(__name__)
@@ -63,25 +64,25 @@ class ModellInhalt:
 
 def zip_lesen(daten: bytes) -> ModellInhalt:
     if not daten:
-        raise ModellFehler("Leerer Request-Body – ZIP-Datei erwartet")
+        raise ModellFehler(T("modell.leer"))
     if len(daten) > MAX_GROESSE:
-        raise ModellFehler("ZIP ist größer als 300 MB")
+        raise ModellFehler(T("modell.zu_gross", mb=MAX_GROESSE // (1024 * 1024)))
     try:
         zf = zipfile.ZipFile(io.BytesIO(daten))
     except zipfile.BadZipFile:
-        raise ModellFehler("Keine gültige ZIP-Datei") from None
+        raise ModellFehler(T("modell.kein_zip")) from None
     with zf:
         dateien = [i for i in zf.infolist() if not i.is_dir()]
         if sum(i.file_size for i in dateien) > MAX_GROESSE:
-            raise ModellFehler("ZIP-Inhalt ist entpackt größer als 300 MB")
+            raise ModellFehler(T("modell.entpackt_zu_gross", mb=MAX_GROESSE // (1024 * 1024)))
         try:
             return _einsammeln(
                 (PurePosixPath(i.filename).parts, lambda i=i: zf.read(i)) for i in dateien
             )
         except (zipfile.BadZipFile, zlib.error, EOFError, NotImplementedError) as e:
-            raise ModellFehler(f"ZIP ist beschädigt: {e}") from None
+            raise ModellFehler(T("modell.beschaedigt", fehler=e)) from None
         except RuntimeError as e:  # verschlüsselte Einträge
-            raise ModellFehler(f"ZIP kann nicht gelesen werden: {e}") from None
+            raise ModellFehler(T("modell.unlesbar", fehler=e)) from None
 
 
 def verzeichnis_lesen(quelle: Path) -> ModellInhalt:
@@ -122,7 +123,7 @@ def _einsammeln(eintraege: Iterable[tuple[tuple[str, ...], Callable[[], bytes]]]
                 bild = cv2.resize(bild, (ZIFFER_BREITE, ZIFFER_HOEHE), interpolation=cv2.INTER_AREA)
             inhalt.vorlagen.setdefault(ziffer, []).append(Vorlage(name, bild))
     if inhalt.uebersprungen:
-        log.warning("Beim Einlesen übersprungen: %s", ", ".join(inhalt.uebersprungen[:10]))
+        log.warning(T("log.modell_uebersprungen", liste=", ".join(inhalt.uebersprungen[:10])))
     return inhalt
 
 
@@ -190,14 +191,14 @@ def erstausstattung(
     if inhalt.ist_leer():
         # Der Normalfall bei Installation aus dem Repository: kein Modell im Image.
         # Keine Markierung, damit ein später eingebautes Modell noch greift.
-        log.debug("Kein mitgeliefertes Modell in %s", quelle)
+        log.debug(T("log.kein_modell", pfad=quelle))
         return None
     vorhanden = archiv.anzahl() > 0 or any(
         p.name[:1] != "." for p in speicher.verzeichnis.glob("*/*.png")
     )
     if vorhanden:
-        info = {"uebernommen": False, "grund": "Datenverzeichnis enthielt schon ein Modell"}
-        log.info("Mitgeliefertes Modell nicht übernommen: Datenverzeichnis enthält schon Lernbilder/Vorlagen")
+        info = {"uebernommen": False, "grund": "daten_vorhanden"}
+        log.info(T("log.modell_nicht_uebernommen"))
     else:
         archiv.ersetzen(inhalt.lernbilder)
         speicher.ersetzen(inhalt.bestand())
@@ -206,10 +207,7 @@ def erstausstattung(
             "lernbilder": len(inhalt.lernbilder),
             "vorlagen": inhalt.anzahl_vorlagen,
         }
-        log.info(
-            "Mitgeliefertes Modell übernommen: %d Lernbilder, %d Vorlagen",
-            len(inhalt.lernbilder), inhalt.anzahl_vorlagen,
-        )
+        log.info(T("log.modell_uebernommen", lernbilder=len(inhalt.lernbilder), vorlagen=inhalt.anzahl_vorlagen))
     info["zeit"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     daten_verzeichnis.mkdir(parents=True, exist_ok=True)
     marker.write_text(json.dumps(info, ensure_ascii=False))

@@ -28,7 +28,7 @@ jobs:
       - run: python -m pytest -q
 
   addon-linter:
-    name: Add-on-Konfiguration
+    name: Add-on configuration
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -52,9 +52,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Image bauen (wie der Supervisor)
+      - name: Build image (like the Supervisor)
         run: docker build --build-arg BUILD_ARCH=${{ matrix.arch }} -t wasseruhr-cv:ci wasseruhr_cv
-      - name: Starten, ablesen, lernen
+      - name: Start, learn, read
         run: |
           docker run -d --name wucv -p 8099:8099 wasseruhr-cv:ci
           for i in $(seq 1 30); do curl -sf http://localhost:8099/health && break; sleep 1; done
@@ -63,6 +63,6 @@ jobs:
           curl -sf -X POST -H "Content-Type: image/jpeg" --data-binary @tests/beispiel.jpg \
             http://localhost:8099/ablesen | tee ablesung.json
           python3 -c "import json; d = json.load(open('ablesung.json')); assert d['sicher'] and d['wert'] == 506.388, d"
-      - name: Protokoll
+      - name: Log
         if: always()
         run: docker logs wucv

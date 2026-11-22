@@ -15,7 +15,7 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, Response
 from starlette.concurrency import run_in_threadpool
 
-from . import __version__, debugbild, kamera, lernseite, modell, schutz, verwaltung
+from . import __version__, debugbild, ha, kamera, lernseite, modell, schutz, sprache, verwaltung
 from .automatik import Automatik
 from .erkennung import (
     BildFehler,
@@ -29,6 +29,7 @@ from .erkennung import (
 )
 from .konfig import NACHKOMMASTELLEN, Konfig
 from .lernbilder import LernbildArchiv
+from .sprache import T, aus_anfrage, meldung
 from .vorlagen import VorlagenSpeicher
 
 log = logging.getLogger("wasseruhr")
@@ -60,6 +61,7 @@ def _logging_einrichten() -> None:
 def create_app(konfig: Konfig | None = None) -> FastAPI:
     _logging_einrichten()
     konfig = konfig or Konfig.aus_umgebung()
+    sprache.einstellen(konfig.sprache)
     speicher = VorlagenSpeicher(konfig.vorlagen_verzeichnis, konfig.max_vorlagen_pro_ziffer)
     archiv = LernbildArchiv(konfig.lernbilder_verzeichnis)
     verlauf: OrderedDict[int, Ablesung] = OrderedDict()
@@ -73,14 +75,14 @@ def create_app(konfig: Konfig | None = None) -> FastAPI:
                 soll = zerlege_wert(e.wert, konfig.anzahl_rollen, NACHKOMMASTELLEN)
                 ziffern = schneide_ziffern(dekodiere_bild(e.pfad.read_bytes()), konfig.rois)
             except (ValueError, OSError) as ex:  # BildFehler ist ein ValueError
-                log.warning("Lernbild %s übersprungen: %s", e.pfad.name, ex)
+                log.warning(T("log.lernbild_uebersprungen", name=e.pfad.name, fehler=ex))
                 continue
             yield e.zeitstempel, soll, ziffern
 
     def _neu_aufbauen() -> int:
         """Vorlagen komplett aus dem Archiv neu erzeugen (Aufrufer hält lern_lock)."""
         anzahl = speicher.neu_aufbauen(_lernbilder_aus_archiv())
-        log.info("Vorlagen aus %d Lernbildern neu aufgebaut: %s", anzahl, speicher.anzahl_pro_ziffer())
+        log.info(T("log.neu_aufgebaut", n=anzahl, anzahl=speicher.anzahl_pro_ziffer()))
         return anzahl
 
     def _vorlagen_bereitstellen() -> None:
@@ -89,31 +91,32 @@ def create_app(konfig: Konfig | None = None) -> FastAPI:
             modell.erstausstattung(konfig.modell_verzeichnis, konfig.daten_verzeichnis, archiv, speicher)
         if not konfig.lerneffekt:
             speicher.laden()
-            log.info("Lerneffekt AUS: Vorlagen eingefroren, /lernen archiviert nur noch")
+            log.info(T("log.lerneffekt_aus"))
             return
         if archiv.anzahl() == 0:
             speicher.laden()
             return
         anzahl = speicher.neu_aufbauen(_lernbilder_aus_archiv())
-        log.info(
-            "Lerneffekt AN: Vorlagen aus %d Lernbildern neu aufgebaut: %s",
-            anzahl, speicher.anzahl_pro_ziffer(),
-        )
+        log.info(T("log.lerneffekt_an", n=anzahl, anzahl=speicher.anzahl_pro_ziffer()))
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
-        log.info(
-            "Start v%s: %d ROIs, MIN_SCORE=%.2f, MIN_ABSTAND=%.2f, MAX_VORLAGEN_PRO_ZIFFER=%d, "
-            "VERSCHIEBUNG=±%dpx, LERNEFFEKT=%s, Daten in %s",
-            __version__, konfig.anzahl_rollen, konfig.min_score, konfig.min_abstand,
-            konfig.max_vorlagen_pro_ziffer, konfig.verschiebung,
-            "an" if konfig.lerneffekt else "aus", konfig.daten_verzeichnis,
-        )
-        log.info(
-            "Kamera: %s | Verwaltung: %s",
-            konfig.kamera or "keine" if konfig.ha_token else f"{konfig.kamera or 'keine'} (ohne HA-Zugang)",
-            "nur über HA-Ingress" if konfig.admin_nur_ingress else "im ganzen Netz",
-        )
+        # SPRACHE=auto: Protokoll und Sensor in der Sprache von HA (start.py fragt meist schon vorher)
+        if konfig.ha_token and not sprache.versucht():
+            ha.sprache_uebernehmen(konfig.ha_url, konfig.ha_token)
+        log.info(T(
+            "log.start", version=__version__, rollen=konfig.anzahl_rollen,
+            min_score=f"{konfig.min_score:.2f}", min_abstand=f"{konfig.min_abstand:.2f}",
+            max_vorlagen=konfig.max_vorlagen_pro_ziffer, verschiebung=konfig.verschiebung,
+            lerneffekt=T("ui.an" if konfig.lerneffekt else "ui.aus"), daten=konfig.daten_verzeichnis,
+        ))
+        log.info(T("log.sprache", quelle=T(f"log.sprache.{sprache.quelle()}")))
+        kamera_text = konfig.kamera or T("log.keine")
+        log.info(T(
+            "log.kamera",
+            kamera=kamera_text if konfig.ha_token else T("log.ohne_ha", kamera=kamera_text),
+            verwaltung=T("log.verwaltung_ingress" if konfig.admin_nur_ingress else "log.verwaltung_netz"),
+        ))
         _vorlagen_bereitstellen()
         automatik.starten()
         yield
@@ -121,6 +124,7 @@ def create_app(konfig: Konfig | None = None) -> FastAPI:
 
     app = FastAPI(title="Wasseruhr-CV", version=__version__, lifespan=lifespan)
     schutz.einrichten(app)
+    sprache.einrichten(app)
     app.state.konfig = konfig
     app.state.speicher = speicher
     app.state.archiv = archiv
@@ -130,7 +134,7 @@ def create_app(konfig: Konfig | None = None) -> FastAPI:
             bild = dekodiere_bild(daten)
             return bild, schneide_ziffern(bild, konfig.rois)
         except BildFehler as e:
-            raise HTTPException(status_code=400, detail=str(e)) from None
+            raise HTTPException(status_code=400, detail=meldung(e)) from None
 
     # ---- POST /ablesen -------------------------------------------------------
 
@@ -158,14 +162,12 @@ def create_app(konfig: Konfig | None = None) -> FastAPI:
             while len(verlauf) > VERLAUF_LAENGE:
                 verlauf.popitem(last=False)
 
-        log.info(
-            "ablesen #%d: wert=%s sicher=%s | %s%s",
-            nr,
-            "null" if wert is None else f"{wert:.3f}",
-            "ja" if sicher else "nein",
-            " ".join(_kurz(e, ok) for e, ok in zip(ergebnisse, sicher_pro_rolle)),
-            f" | fehlende Vorlagen: {fehlende}" if fehlende else "",
-        )
+        log.info(T(
+            "log.ablesen", nr=nr, wert="null" if wert is None else f"{wert:.3f}",
+            sicher=T("ui.ja" if sicher else "ui.nein"),
+            rollen=" ".join(_kurz(e, ok) for e, ok in zip(ergebnisse, sicher_pro_rolle)),
+            fehlend=T("log.fehlende_vorlagen", liste=str(fehlende)) if fehlende else "",
+        ))
         return nr, {
             "wert": wert,
             "sicher": sicher,
@@ -185,16 +187,13 @@ def create_app(konfig: Konfig | None = None) -> FastAPI:
 
     def _kamera_ablesen() -> dict:
         if not konfig.kamera:
-            raise HTTPException(status_code=400, detail="Keine Kamera eingestellt (Option kamera bzw. KAMERA)")
+            raise HTTPException(status_code=400, detail=T("api.keine_kamera"))
         if not konfig.ha_token:
-            raise HTTPException(
-                status_code=400,
-                detail="Kein Zugang zu Home Assistant: nur im Add-on oder mit HA_URL und HA_TOKEN",
-            )
+            raise HTTPException(status_code=400, detail=T("api.kein_ha"))
         try:
             daten = kamera.schnappschuss(konfig.ha_url, konfig.ha_token, konfig.kamera)
         except kamera.KameraFehler as e:
-            raise HTTPException(status_code=502, detail=f"Kamerabild nicht geladen: {e}") from None
+            raise HTTPException(status_code=502, detail=T("api.kamerabild_fehlt", fehler=e)) from None
         nr, ergebnis = _ablesen_mit_nr(daten)
         return {"nr": nr, **ergebnis}
 
@@ -216,26 +215,22 @@ def create_app(konfig: Konfig | None = None) -> FastAPI:
             wert = float(wert_text.strip().replace(",", "."))
             soll = zerlege_wert(wert, konfig.anzahl_rollen, NACHKOMMASTELLEN)
         except ValueError as e:
-            raise HTTPException(status_code=400, detail=f"Ungültiger wert={wert_text!r}: {e}") from None
+            raise HTTPException(status_code=400, detail=T("api.wert_ungueltig", wert=repr(wert_text), fehler=e)) from None
         aus_verlauf = not daten and ablesung is not None
         if aus_verlauf:
             a = _ablesung(ablesung)
             if a is None:
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"Ablesung #{ablesung} ist nicht mehr im Speicher – Seite neu laden",
-                )
+                raise HTTPException(status_code=404, detail=T("api.ablesung_neu_laden", nr=ablesung))
             daten = a.daten
         _bild, ziffern = _ziffern_aus_body(daten)  # erst prüfen, dann archivieren
         with lern_lock:
             zeitstempel = archiv.speichern(daten, wert)
             gespeichert = speicher.lernen(zeitstempel, soll, ziffern) if konfig.lerneffekt else 0
         anzahl = speicher.anzahl_pro_ziffer()
-        log.info(
-            "lernen: wert=%s ziffern=%s gespeichert=%d%s vorlagen_pro_ziffer=%s",
-            f"{wert:.3f}", "".join(map(str, soll)), gespeichert,
-            "" if konfig.lerneffekt else " (Lerneffekt aus, nur archiviert)", anzahl,
-        )
+        log.info(T(
+            "log.lernen", wert=f"{wert:.3f}", ziffern="".join(map(str, soll)), gespeichert=gespeichert,
+            zusatz="" if konfig.lerneffekt else T("log.nur_archiviert"), anzahl=anzahl,
+        ))
         if aus_verlauf:
             _ablesen(daten)  # gleiches Bild sofort neu ablesen -> Lernseite zeigt den Effekt
         return {"gespeichert": gespeichert, "vorlagen_pro_ziffer": anzahl}
@@ -243,9 +238,9 @@ def create_app(konfig: Konfig | None = None) -> FastAPI:
     @app.post("/lernen")
     async def lernen(
         request: Request,
-        wert: str = Query(..., description="Abgelesener Zählerstand, z. B. 506.388"),
+        wert: str = Query(..., description="Meter reading shown on the image, e.g. 506.388"),
         ablesung: int | None = Query(
-            None, description="Ohne Body: das Bild dieser Ablesung (Nr. aus der Lernseite) lernen"
+            None, description="Without body: learn the image of this reading (number from the training page)"
         ),
     ) -> dict:
         daten = await schutz.body_lesen(request, schutz.MAX_BILD_BYTES)
@@ -265,18 +260,19 @@ def create_app(konfig: Konfig | None = None) -> FastAPI:
 
     @app.get("/debug.png")
     def debug_png(
-        letztes: int = Query(1, description="1 = Bild des letzten /ablesen-Aufrufs"),
-        nr: int | None = Query(None, description="stattdessen eine bestimmte Ablesung"),
+        request: Request,
+        letztes: int = Query(1, description="1 = image of the latest /ablesen call"),
+        nr: int | None = Query(None, description="a specific reading instead"),
     ) -> Response:
         a = _ablesung(nr)
         if a is None:
             raise HTTPException(
                 status_code=404,
-                detail="Noch kein /ablesen-Aufruf seit dem Start" if nr is None
-                else f"Ablesung #{nr} ist nicht mehr im Speicher",
+                detail=T("api.noch_keine_ablesung") if nr is None else T("api.ablesung_weg", nr=nr),
             )
         png = debugbild.zeichne(
-            a.bild, konfig.rois, a.ziffern, a.ergebnisse, a.sicher_pro_rolle, a.wert, a.sicher
+            a.bild, konfig.rois, a.ziffern, a.ergebnisse, a.sicher_pro_rolle, a.wert, a.sicher,
+            sprache=aus_anfrage(request),
         )
         return Response(content=png, media_type="image/png", headers={"Cache-Control": "no-store"})
 
@@ -298,6 +294,7 @@ def create_app(konfig: Konfig | None = None) -> FastAPI:
                 automatik_intervall=konfig.intervall_minuten if automatik.aktiv else None,
                 zaehlerstand=automatik.zustand()["zaehlerstand"],
                 verwaltung=verwaltung.verwaltung_erlaubt(konfig, request),
+                sprache=aus_anfrage(request),
             ),
             headers={"Cache-Control": "no-store"},
         )

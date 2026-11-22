@@ -23,6 +23,7 @@ from pathlib import Path
 import uvicorn
 
 from .konfig import Konfig
+from .sprache import T, Text
 
 log = logging.getLogger("wasseruhr")
 HOST = "0.0.0.0"  # im Container: alle Schnittstellen; nach außen entscheidet die Portfreigabe
@@ -35,21 +36,19 @@ class _Server(uvicorn.Server):
         yield
 
 
-def tls_dateien(konfig: Konfig) -> tuple[Path, Path, str]:
+def tls_dateien(konfig: Konfig) -> tuple[Path, Path, Text]:
     """(Zertifikat, Schlüssel, Beschreibung). Fällt auf ein selbstsigniertes zurück."""
     zertifikat, schluessel = konfig.ssl_pfad(konfig.zertifikat), konfig.ssl_pfad(konfig.schluessel)
     if zertifikat.is_file() and schluessel.is_file():
         try:
             ssl.create_default_context(ssl.Purpose.CLIENT_AUTH).load_cert_chain(zertifikat, schluessel)
-            return zertifikat, schluessel, f"Zertifikat {zertifikat}"
+            return zertifikat, schluessel, T("server.zertifikat", pfad=zertifikat)
         except (ssl.SSLError, OSError) as e:
-            log.warning("HTTPS: %s / %s nicht nutzbar (%s) – nutze selbstsigniertes Zertifikat",
-                        zertifikat, schluessel, e)
+            log.warning(T("log.https_unbrauchbar", zertifikat=zertifikat, schluessel=schluessel, fehler=e))
     else:
-        log.warning("HTTPS: %s oder %s fehlt – nutze selbstsigniertes Zertifikat (Browser warnt)",
-                    zertifikat, schluessel)
+        log.warning(T("log.https_fehlt", zertifikat=zertifikat, schluessel=schluessel))
     zertifikat, schluessel = selbstsigniert(konfig.daten_verzeichnis / "tls")
-    return zertifikat, schluessel, "selbstsigniertes Zertifikat"
+    return zertifikat, schluessel, T("server.selbstsigniert")
 
 
 def selbstsigniert(ordner: Path) -> tuple[Path, Path]:
@@ -63,7 +62,7 @@ def selbstsigniert(ordner: Path) -> tuple[Path, Path]:
         check=True, capture_output=True,
     )
     schluessel.chmod(0o600)
-    log.info("HTTPS: selbstsigniertes Zertifikat erzeugt: %s", zertifikat)
+    log.info(T("log.selbstsigniert_erzeugt", pfad=zertifikat))
     return zertifikat, schluessel
 
 
@@ -74,20 +73,20 @@ def _config(app, port: int, haupt: bool, **extra) -> uvicorn.Config:
     )
 
 
-def server_liste(app, konfig: Konfig) -> list[tuple[str, uvicorn.Server]]:
-    liste = [(f"Ingress/intern :{konfig.port}", _Server(_config(app, konfig.port, True)))]
+def server_liste(app, konfig: Konfig) -> list[tuple[Text | str, uvicorn.Server]]:
+    liste = [(T("server.intern", port=konfig.port), _Server(_config(app, konfig.port, True)))]
     if konfig.http:
         liste.append((f"HTTP :{konfig.http_port}", _Server(_config(app, konfig.http_port, False))))
     if konfig.https:
         zertifikat, schluessel, art = tls_dateien(konfig)
         liste.append((
-            f"HTTPS :{konfig.https_port} ({art})",
+            T("server.https", port=konfig.https_port, art=art),
             _Server(_config(app, konfig.https_port, False, ssl_certfile=str(zertifikat), ssl_keyfile=str(schluessel))),
         ))
     return liste
 
 
-async def _laufen(liste: list[tuple[str, uvicorn.Server]]) -> None:
+async def _laufen(liste: list[tuple[Text | str, uvicorn.Server]]) -> None:
     server = [s for _, s in liste]
     loop = asyncio.get_running_loop()
 
@@ -105,7 +104,7 @@ async def _laufen(liste: list[tuple[str, uvicorn.Server]]) -> None:
             return
         await asyncio.sleep(0.05)
     weitere = [asyncio.create_task(s.serve()) for s in server[1:]]
-    log.info("Erreichbar: %s", " | ".join(name for name, _ in liste))
+    log.info(T("log.erreichbar", liste=" | ".join(str(name) for name, _ in liste)))
     await asyncio.gather(haupt, *weitere)
 
 

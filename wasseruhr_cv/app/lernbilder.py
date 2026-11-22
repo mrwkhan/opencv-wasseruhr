@@ -15,6 +15,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Mapping
 
+from .sprache import T
+
 log = logging.getLogger(__name__)
 
 ZEITSTEMPEL_FORMAT = "%Y%m%dT%H%M%S%fZ"  # UTC -> alphabetisch = chronologisch
@@ -69,7 +71,7 @@ class LernbildArchiv:
             self.verzeichnis.mkdir(parents=True, exist_ok=True)
             pfad = self.verzeichnis / f"{zeitstempel}_{wert:.3f}{_endung(daten)}"
             pfad.write_bytes(daten)
-        log.info("Lernbild archiviert: %s", pfad.name)
+        log.info(T("log.lernbild_archiviert", name=pfad.name))
         return zeitstempel
 
     def eintraege(self) -> list[Lernbild]:
@@ -83,7 +85,7 @@ class LernbildArchiv:
                 datetime.strptime(zeitstempel, ZEITSTEMPEL_FORMAT)
                 wert = float(wert_text)
             except ValueError:
-                log.warning("Lernbild mit unbekanntem Dateinamen ignoriert: %s", pfad.name)
+                log.warning(T("log.lernbild_name", name=pfad.name))
                 continue
             eintraege.append(Lernbild(zeitstempel, wert, pfad))
         return eintraege
@@ -103,7 +105,7 @@ class LernbildArchiv:
             if e is None:
                 raise KeyError(name)
             e.pfad.unlink()
-        log.info("Lernbild gelöscht: %s", name)
+        log.info(T("log.lernbild_geloescht", name=name))
         return e
 
     def wert_aendern(self, name: str, wert: float) -> Lernbild:
@@ -114,7 +116,7 @@ class LernbildArchiv:
                 raise KeyError(name)
             neu = e.pfad.with_name(f"{e.zeitstempel}_{wert:.3f}{e.pfad.suffix}")
             e.pfad.rename(neu)
-        log.info("Lernbild korrigiert: %s -> %s", name, neu.name)
+        log.info(T("log.lernbild_korrigiert", alt=name, neu=neu.name))
         return Lernbild(e.zeitstempel, wert, neu)
 
     def ergaenzen(self, dateien: Mapping[str, bytes]) -> int:
@@ -132,7 +134,7 @@ class LernbildArchiv:
                 vorhanden.add(zeitstempel)
                 neu += 1
             self._letzter = None  # streng monotone Zeitstempel neu bestimmen
-        log.info("Lernbilder ergänzt: %d neu, %d schon vorhanden", neu, len(dateien) - neu)
+        log.info(T("log.lernbilder_ergaenzt", neu=neu, vorhanden=len(dateien) - neu))
         return neu
 
     def ersetzen(self, dateien: Mapping[str, bytes]) -> int:
@@ -150,7 +152,7 @@ class LernbildArchiv:
             neu_dir.rename(self.verzeichnis)
             shutil.rmtree(alt_dir, ignore_errors=True)
             self._letzter = None
-        log.info("Lernbild-Archiv ersetzt: %d Bilder", len(dateien))
+        log.info(T("log.archiv_ersetzt", n=len(dateien)))
         return len(dateien)
 
     def _neuer_zeitstempel(self) -> str:

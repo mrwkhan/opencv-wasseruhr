@@ -1,9 +1,11 @@
 name: Wasseruhr-CV
-version: "1.4.3"
+version: "1.5.0"
 slug: wasseruhr_cv
+# Die Beschreibung im Add-on-Store lässt sich nicht übersetzen – daher englisch.
 description: >-
-  Liest eine Wasseruhr per Kamera und OpenCV ab (kein LLM, keine Cloud) und
-  schreibt den Zählerstand nach Home Assistant. Mit Lernseite und Verwaltung.
+  Reads a water meter with a camera and OpenCV (no LLM, no cloud) and writes
+  the reading to Home Assistant. With training and admin pages, in English and
+  German.
 url: https://github.com/mrwkhan/opencv-wasseruhr
 arch:
   - aarch64
@@ -28,9 +30,10 @@ map:
 ports:
   8080/tcp: 8099
   8443/tcp: 8100
+# Ersatztext, falls es keine Übersetzung gibt (translations/<sprache>.yaml)
 ports_description:
-  8080/tcp: HTTP im Heimnetz (antwortet nur mit Option http)
-  8443/tcp: HTTPS im Heimnetz (antwortet nur mit Option https)
+  8080/tcp: HTTP in the local network (answers only with option http)
+  8443/tcp: HTTPS in the local network (answers only with option https)
 
 options:
   kamera: ""
@@ -50,6 +53,7 @@ options:
   max_vorlagen_pro_ziffer: 30
   verschiebung: 3
   admin_nur_ueber_ingress: true
+  sprache: auto
   log_level: INFO
 schema:
   kamera: str?
@@ -70,4 +74,5 @@ schema:
   verschiebung: int(0,10)
   rois: str?
   admin_nur_ueber_ingress: bool
+  sprache: list(auto|de|en)
   log_level: list(DEBUG|INFO|WARNING|ERROR)

@@ -26,11 +26,14 @@ from . import ha, kamera, modell, schutz, verwaltungsseite
 from .erkennung import zerlege_wert
 from .konfig import NACHKOMMASTELLEN, Konfig
 from .lernbilder import LernbildArchiv
+from .sprache import T, aus_anfrage, meldung, uebersetzen
 from .vorlagen import ZIFFERN, VorlagenSpeicher
 from .automatik import Automatik
 
 AUSSCHNITT_RAND = 12  # px um das Zählwerk beim Vorschaubild
 KAMERA_ENTITAET = re.compile(r"camera\.[a-z0-9_]+")
+# Importmodus: deutsche Namen wie bisher, englische als gleichwertige Alternative
+IMPORT_MODI = {"ergaenzen": "ergaenzen", "ersetzen": "ersetzen", "merge": "ergaenzen", "replace": "ersetzen"}
 log = logging.getLogger(__name__)
 
 
@@ -57,7 +60,7 @@ def wert_parsen(wert_text: str, konfig: Konfig) -> float:
         wert = float(wert_text.strip().replace(",", "."))
         zerlege_wert(wert, konfig.anzahl_rollen, NACHKOMMASTELLEN)
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=f"Ungültiger wert={wert_text!r}: {e}") from None
+        raise HTTPException(status_code=400, detail=T("api.wert_ungueltig", wert=repr(wert_text), fehler=e)) from None
     return wert
 
 
@@ -66,11 +69,7 @@ def router(k: Kontext) -> APIRouter:
 
     def zugang(request: Request) -> None:
         if not verwaltung_erlaubt(konfig, request):
-            raise HTTPException(
-                status_code=403,
-                detail="Die Verwaltung ist nur über Home Assistant erreichbar (Seitenleiste „Wasseruhr“). "
-                "Für den Zugriff im Heimnetz die Option admin_nur_ueber_ingress ausschalten.",
-            )
+            raise HTTPException(status_code=403, detail=T("api.nur_ingress"))
 
     r = APIRouter(prefix="/admin", dependencies=[Depends(zugang)])
 
@@ -91,11 +90,11 @@ def router(k: Kontext) -> APIRouter:
     # ---- Seite & Übersicht --------------------------------------------------
 
     @r.get("", response_class=HTMLResponse)
-    def seite() -> HTMLResponse:
-        return HTMLResponse(verwaltungsseite.SEITE, headers={"Cache-Control": "no-store"})
+    def seite(request: Request) -> HTMLResponse:
+        return HTMLResponse(verwaltungsseite.seite(aus_anfrage(request)), headers={"Cache-Control": "no-store"})
 
     @r.get("/info")
-    def info() -> dict:
+    def info(request: Request) -> dict:
         return _zustand(
             version=k.version,
             addon=konfig.ist_addon,
@@ -113,35 +112,38 @@ def router(k: Kontext) -> APIRouter:
                 "ADMIN_NUR_INGRESS": konfig.admin_nur_ingress,
                 "HTTP": konfig.http,
                 "HTTPS": konfig.https,
+                "SPRACHE": konfig.sprache,
             },
-            automatik=k.automatik.zustand(),
+            automatik=k.automatik.zustand(aus_anfrage(request)),
         )
 
     # ---- Automatik -----------------------------------------------------------
 
     @r.get("/automatik")
-    def automatik() -> dict:
-        return k.automatik.zustand()
+    def automatik(request: Request) -> dict:
+        return k.automatik.zustand(aus_anfrage(request))
 
     @r.post("/automatik/jetzt")
-    def automatik_jetzt() -> dict:
+    def automatik_jetzt(request: Request) -> dict:
         """Sofort ablesen, prüfen und nach Home Assistant schreiben."""
         if not (konfig.kamera and konfig.ha_token):
-            raise HTTPException(status_code=400, detail="Keine Kamera eingestellt oder kein Zugang zu Home Assistant")
+            raise HTTPException(status_code=400, detail=T("api.keine_automatik"))
         k.automatik.durchlauf()
-        return k.automatik.zustand()
+        return k.automatik.zustand(aus_anfrage(request))
 
     @r.post("/automatik/zaehlerstand")
-    def zaehlerstand_setzen(wert: str = Query(..., description="Richtiger Zählerstand in m³")) -> dict:
+    def zaehlerstand_setzen(
+        request: Request, wert: str = Query(..., description="Correct meter reading in m³")
+    ) -> dict:
         """Von Hand korrigieren, z. B. nach einem Zählertausch."""
         k.automatik.zaehlerstand_setzen(wert_parsen(wert, konfig))
-        return k.automatik.zustand()
+        return k.automatik.zustand(aus_anfrage(request))
 
     # ---- Kamera auswählen ------------------------------------------------------
 
     def _ha_zugang() -> None:
         if not konfig.ha_token:
-            raise HTTPException(status_code=400, detail="Kein Zugang zu Home Assistant (nur im Add-on oder mit HA_URL/HA_TOKEN)")
+            raise HTTPException(status_code=400, detail=T("api.kein_ha"))
 
     @r.get("/kameras")
     def kameras() -> dict:
@@ -150,40 +152,36 @@ def router(k: Kontext) -> APIRouter:
         try:
             liste = ha.kameras(konfig.ha_url, konfig.ha_token)
         except ha.HAFehler as e:
-            raise HTTPException(status_code=502, detail=f"Kameras nicht abrufbar: {e}") from None
+            raise HTTPException(status_code=502, detail=T("api.kameras_fehler", fehler=e)) from None
         return {"kameras": liste, "aktuell": konfig.kamera, "speichern_moeglich": konfig.ist_addon}
 
     @r.get("/kameras/{entity_id}/bild")
     def kamera_vorschau(entity_id: str) -> Response:
         _ha_zugang()
         if not KAMERA_ENTITAET.fullmatch(entity_id):
-            raise HTTPException(status_code=400, detail="Keine Kamera-Entität")
+            raise HTTPException(status_code=400, detail=T("api.keine_kamera_entitaet"))
         try:
             bild = kamera.schnappschuss(konfig.ha_url, konfig.ha_token, entity_id)
         except kamera.KameraFehler as e:
-            raise HTTPException(status_code=502, detail=str(e)) from None
+            raise HTTPException(status_code=502, detail=meldung(e)) from None
         typ = "image/png" if bild.startswith(b"\x89PNG") else "image/jpeg"
         return Response(bild, media_type=typ, headers={"Cache-Control": "no-store"})
 
     @r.post("/kamera")
-    def kamera_waehlen(entity_id: str = Query(..., description="z. B. camera.wasseruhr")) -> dict:
+    def kamera_waehlen(entity_id: str = Query(..., description="e.g. camera.water_meter")) -> dict:
         """Speichert die Kamera in der Add-on-Konfiguration und startet das Add-on neu."""
         _ha_zugang()
         if not konfig.ist_addon:
-            raise HTTPException(status_code=400, detail=f"Nur im Add-on möglich – in Docker die Variable KAMERA={entity_id} setzen")
+            raise HTTPException(status_code=400, detail=T("api.nur_addon", entity=entity_id))
         try:
             vorhanden = {k["entity_id"] for k in ha.kameras(konfig.ha_url, konfig.ha_token)}
             if entity_id not in vorhanden:
-                raise HTTPException(status_code=400, detail=f"{entity_id} gibt es in Home Assistant nicht")
+                raise HTTPException(status_code=400, detail=T("api.entitaet_fehlt", entity=entity_id))
             optionen = ha.addon_optionen(konfig.supervisor_url, konfig.ha_token)
             optionen["kamera"] = entity_id
             ha.addon_optionen_setzen(konfig.supervisor_url, konfig.ha_token, optionen)
         except ha.HAFehler as e:
-            raise HTTPException(
-                status_code=502,
-                detail=f"Konnte die Konfiguration nicht speichern ({e}). Bitte unter Konfiguration "
-                f"bei „Kamera“ eintragen: {entity_id}",
-            ) from None
+            raise HTTPException(status_code=502, detail=T("api.optionen_fehler", fehler=e, entity=entity_id)) from None
         threading.Thread(target=_neu_starten, daemon=True).start()
         return {"kamera": entity_id, "neustart": True}
 
@@ -192,7 +190,7 @@ def router(k: Kontext) -> APIRouter:
         try:
             ha.addon_neu_starten(konfig.supervisor_url, konfig.ha_token)
         except ha.HAFehler as e:  # die Verbindung reißt beim Neustart ab – erwartbar
-            log.info("Neustart angefordert (%s)", e)
+            log.info(T("log.neustart", fehler=e))
 
     @r.get("/ablesungen")
     def ablesungen() -> list[dict]:
@@ -214,7 +212,7 @@ def router(k: Kontext) -> APIRouter:
     def lernbild(name: str, ausschnitt: bool = False) -> Response:
         e = archiv.finden(name)
         if e is None:
-            raise HTTPException(status_code=404, detail=f"Lernbild {name} gibt es nicht")
+            raise HTTPException(status_code=404, detail=T("api.lernbild_fehlt", name=name))
         daten = e.pfad.read_bytes()
         typ = "image/png" if daten.startswith(b"\x89PNG") else "image/jpeg"
         if ausschnitt:
@@ -229,17 +227,17 @@ def router(k: Kontext) -> APIRouter:
             try:
                 archiv.loeschen(name)
             except KeyError:
-                raise HTTPException(status_code=404, detail=f"Lernbild {name} gibt es nicht") from None
+                raise HTTPException(status_code=404, detail=T("api.lernbild_fehlt", name=name)) from None
             return _nach_aenderung()
 
     @r.post("/lernbilder/{name}/wert")
-    def lernbild_korrigieren(name: str, wert: str = Query(..., description="Richtiger Zählerstand")) -> dict:
+    def lernbild_korrigieren(name: str, wert: str = Query(..., description="Correct meter reading")) -> dict:
         richtig = wert_parsen(wert, konfig)
         with k.lern_lock:
             try:
                 neu = archiv.wert_aendern(name, richtig)
             except KeyError:
-                raise HTTPException(status_code=404, detail=f"Lernbild {name} gibt es nicht") from None
+                raise HTTPException(status_code=404, detail=T("api.lernbild_fehlt", name=name)) from None
             return _nach_aenderung() | {"name": neu.name}
 
     # ---- Vorlagen -----------------------------------------------------------
@@ -275,14 +273,14 @@ def router(k: Kontext) -> APIRouter:
     # ---- Export & Import ----------------------------------------------------
 
     @r.get("/export.zip")
-    def export() -> Response:
+    def export(request: Request) -> Response:
         with k.lern_lock:
             daten = modell.exportieren(
                 archiv,
                 konfig.vorlagen_verzeichnis,
                 {"version": k.version, "rois": [list(roi) for roi in konfig.rois]},
             )
-        dateiname = f"wasseruhr-modell-{datetime.now():%Y%m%d-%H%M}.zip"
+        dateiname = f"{uebersetzen('export.name', aus_anfrage(request))}-{datetime.now():%Y%m%d-%H%M}.zip"
         return Response(
             daten,
             media_type="application/zip",
@@ -293,13 +291,9 @@ def router(k: Kontext) -> APIRouter:
         try:
             inhalt = modell.zip_lesen(daten)
         except modell.ModellFehler as e:
-            raise HTTPException(status_code=400, detail=str(e)) from None
+            raise HTTPException(status_code=400, detail=meldung(e)) from None
         if not inhalt.lernbilder:
-            raise HTTPException(
-                status_code=400,
-                detail="Im ZIP sind keine Lernbilder (lernbilder/<zeitstempel>_<wert>.jpg). "
-                "Ein Export aus der Verwaltung oder ein ZIP des data-Ordners passt.",
-            )
+            raise HTTPException(status_code=400, detail=T("api.zip_ohne_lernbilder"))
         with k.lern_lock:
             if modus == "ersetzen":
                 neu = archiv.ersetzen(inhalt.lernbilder)
@@ -324,10 +318,10 @@ def router(k: Kontext) -> APIRouter:
     @r.post("/import")
     async def importieren(
         request: Request,
-        modus: str = Query("ergaenzen", pattern="^(ergaenzen|ersetzen)$"),
+        modus: str = Query("ergaenzen", pattern="^(ergaenzen|ersetzen|merge|replace)$"),
     ) -> dict:
         daten = await schutz.body_lesen(request, modell.MAX_GROESSE)
-        return await run_in_threadpool(_importieren, daten, modus)
+        return await run_in_threadpool(_importieren, daten, IMPORT_MODI[modus])
 
     return r
 

@@ -8,6 +8,8 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .sprache import AUTO, SPRACHEN, T
+
 # Zählwerk 640x480 (OV3660-Snapshot): 8 Rollen, je [x1, y1, x2, y2] in Pixeln.
 STANDARD_ROIS: list[tuple[int, int, int, int]] = [
     (130, 144, 162, 196),
@@ -67,6 +69,10 @@ class Konfig:
     schluessel: str = "privkey.pem"
     ssl_verzeichnis: Path = Path("/ssl")
 
+    # Sprache: "de"/"en" fest, "auto" = Webseiten nach Browser, Protokoll und
+    # Sensor nach Home Assistant (siehe sprache.py)
+    sprache: str = AUTO
+
     @property
     def vorlagen_verzeichnis(self) -> Path:
         return self.daten_verzeichnis / "vorlagen"
@@ -111,24 +117,25 @@ class Konfig:
             zertifikat=(env.get("ZERTIFIKAT") or "").strip() or "fullchain.pem",
             schluessel=(env.get("SCHLUESSEL") or "").strip() or "privkey.pem",
             ssl_verzeichnis=Path((env.get("SSL_VERZEICHNIS") or "").strip() or "/ssl"),
+            sprache=_parse_sprache(env),
         )
         if konfig.max_vorlagen_pro_ziffer < 1:
-            raise KonfigFehler("MAX_VORLAGEN_PRO_ZIFFER muss >= 1 sein")
+            raise KonfigFehler(T("konfig.max_vorlagen"))
         if not 0 <= konfig.verschiebung <= 10:
-            raise KonfigFehler("VERSCHIEBUNG muss zwischen 0 und 10 liegen")
+            raise KonfigFehler(T("konfig.verschiebung"))
         if konfig.kamera and not _KAMERA.fullmatch(konfig.kamera):
-            raise KonfigFehler(f"KAMERA={konfig.kamera!r}: erwartet eine Entität wie camera.wasseruhr")
+            raise KonfigFehler(T("konfig.kamera", wert=repr(konfig.kamera)))
         if konfig.sensor and not konfig.sensor.startswith("sensor."):
-            raise KonfigFehler(f"SENSOR={konfig.sensor!r}: erwartet eine Entität wie sensor.wasserzaehler")
+            raise KonfigFehler(T("konfig.sensor", wert=repr(konfig.sensor)))
         if konfig.input_number and not konfig.input_number.startswith("input_number."):
-            raise KonfigFehler(f"INPUT_NUMBER={konfig.input_number!r}: erwartet eine Entität wie input_number.wasserzaehler")
+            raise KonfigFehler(T("konfig.input_number", wert=repr(konfig.input_number)))
         if not 0 <= konfig.intervall_minuten <= 1440:
-            raise KonfigFehler("INTERVALL_MINUTEN muss zwischen 0 und 1440 liegen")
+            raise KonfigFehler(T("konfig.intervall"))
         if konfig.max_m3_pro_stunde <= 0 or konfig.toleranz_m3 < 0:
-            raise KonfigFehler("MAX_M3_PRO_STUNDE muss > 0 und TOLERANZ_M3 >= 0 sein")
+            raise KonfigFehler(T("konfig.m3"))
         ports = [konfig.port] + [p for p, an in ((konfig.http_port, konfig.http), (konfig.https_port, konfig.https)) if an]
         if any(not 1 <= p <= 65535 for p in ports) or len(set(ports)) != len(ports):
-            raise KonfigFehler(f"Ports müssen zwischen 1 und 65535 liegen und verschieden sein: {ports}")
+            raise KonfigFehler(T("konfig.ports", ports=str(ports)))
         return konfig
 
     @property
@@ -147,7 +154,7 @@ def _parse_zahl(env: dict[str, str], name: str, standard, typ):
     try:
         return typ(roh.strip().replace(",", ".") if typ is float else roh.strip())
     except ValueError:
-        raise KonfigFehler(f"{name}={roh!r} ist keine gültige Zahl") from None
+        raise KonfigFehler(T("konfig.zahl", name=name, wert=repr(roh))) from None
 
 
 _KAMERA = re.compile(r"camera\.[a-z0-9_]+")
@@ -155,15 +162,15 @@ _ENTITAET = re.compile(r"[a-z_]+\.[a-z0-9_]+")
 
 
 def _entitaet(env: dict[str, str], name: str, standard: str | None) -> str | None:
-    """Leer = Standard; '-' oder 'aus' = bewusst keine Entität."""
+    """Leer = Standard; '-', 'aus' oder 'off' = bewusst keine Entität."""
     roh = env.get(name)
     if roh is None:
         return standard
     roh = roh.strip()
-    if roh.lower() in ("", "-", "aus", "none"):
+    if roh.lower() in ("", "-", "aus", "off", "none"):
         return None if roh else standard
     if not _ENTITAET.fullmatch(roh):
-        raise KonfigFehler(f"{name}={roh!r} ist keine gültige Entität")
+        raise KonfigFehler(T("konfig.entitaet", name=name, wert=repr(roh)))
     return roh
 
 _AN = {"an", "ein", "ja", "1", "true", "on", "yes"}
@@ -178,7 +185,16 @@ def _parse_schalter(env: dict[str, str], name: str, standard: bool) -> bool:
         return True
     if roh in _AUS:
         return False
-    raise KonfigFehler(f"{name}={env[name]!r}: erwartet 'an' oder 'aus'")
+    raise KonfigFehler(T("konfig.schalter", name=name, wert=repr(env[name])))
+
+
+def _parse_sprache(env: dict[str, str]) -> str:
+    roh = (env.get("SPRACHE") or "").strip().lower()
+    if roh in ("", AUTO):
+        return AUTO
+    if roh in SPRACHEN:
+        return roh
+    raise KonfigFehler(T("konfig.sprache", wert=repr(env["SPRACHE"])))
 
 
 def _parse_rois(roh: str | None) -> tuple[tuple[int, int, int, int], ...]:
@@ -187,11 +203,9 @@ def _parse_rois(roh: str | None) -> tuple[tuple[int, int, int, int], ...]:
     try:
         daten = json.loads(roh)
     except json.JSONDecodeError as e:
-        raise KonfigFehler(f"ROIS ist kein gültiges JSON: {e}") from None
+        raise KonfigFehler(T("konfig.rois_json", fehler=e)) from None
     if not isinstance(daten, list) or len(daten) <= NACHKOMMASTELLEN:
-        raise KonfigFehler(
-            f"ROIS muss eine JSON-Liste mit mindestens {NACHKOMMASTELLEN + 1} Einträgen sein"
-        )
+        raise KonfigFehler(T("konfig.rois_liste", n=NACHKOMMASTELLEN + 1))
     rois = []
     for i, eintrag in enumerate(daten, start=1):
         if (
@@ -199,11 +213,11 @@ def _parse_rois(roh: str | None) -> tuple[tuple[int, int, int, int], ...]:
             or len(eintrag) != 4
             or not all(isinstance(v, int) and not isinstance(v, bool) for v in eintrag)
         ):
-            raise KonfigFehler(f"ROIS[{i}] muss [x1, y1, x2, y2] mit ganzen Zahlen sein")
+            raise KonfigFehler(T("konfig.roi_format", i=i))
         x1, y1, x2, y2 = eintrag
         if x1 < 0 or y1 < 0 or x2 <= x1 or y2 <= y1:
-            raise KonfigFehler(f"ROIS[{i}]={eintrag}: erwartet 0 <= x1 < x2 und 0 <= y1 < y2")
+            raise KonfigFehler(T("konfig.roi_lage", i=i, roi=str(eintrag)))
         if x2 - x1 <= 6:
-            raise KonfigFehler(f"ROIS[{i}]={eintrag}: zu schmal (links/rechts werden je 3 px abgeschnitten)")
+            raise KonfigFehler(T("konfig.roi_schmal", i=i, roi=str(eintrag)))
         rois.append((x1, y1, x2, y2))
     return tuple(rois)

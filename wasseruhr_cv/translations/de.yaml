@@ -93,6 +93,13 @@ configuration:
     description: >-
       Löschen, Import und Export nur über die Seitenleiste, also nur für
       angemeldete Benutzer – auch wenn HTTP oder HTTPS an ist.
+  sprache:
+    name: Sprache
+    description: >-
+      Sprache von Lernseite, Verwaltung, Meldungen, Protokoll und Sensor.
+      auto: Webseiten in der Sprache des Browsers (auf der Seite umschaltbar),
+      Protokoll und Sensor in der Sprache von Home Assistant. de bzw. en legt
+      die Sprache überall fest.
   log_level:
     name: Log-Level
     description: DEBUG zeigt zusätzlich übersprungene Duplikate.

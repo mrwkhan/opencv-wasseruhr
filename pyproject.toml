@@ -1,7 +1,7 @@
 [project]
 name = "wasseruhr-cv"
-version = "1.4.3"
-description = "Liest eine Wasseruhr per klassischem Computer Vision ab (OpenCV Template Matching) – Home-Assistant-Add-on"
+version = "1.5.0"
+description = "Reads a water meter with classic computer vision (OpenCV template matching) – Home Assistant add-on"
 requires-python = ">=3.12"
 license = "MIT"
 

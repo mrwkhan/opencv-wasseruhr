@@ -13,9 +13,11 @@ from fastapi.testclient import TestClient
 
 import start
 from app import automatik as automatik_modul
-from app.automatik import UEBERNOMMEN, UNVERAENDERT, VERWORFEN, Regeln, pruefen
+from app import sprache
+from app.automatik import FEHLER, GESETZT, UEBERNOMMEN, UNVERAENDERT, VERWORFEN, Regeln, pruefen
 from app.konfig import Konfig
 from app.main import create_app
+from app.sprache import ausgeben
 
 MODELL = Path(__file__).parent.parent / "wasseruhr_cv" / "modell"
 LERNBILD = {p.stem.split("_")[1]: p for p in (MODELL / "lernbilder").glob("*.png")}
@@ -48,7 +50,7 @@ def _ergebnis(wert, sicher=True, fehlend=()):
 )
 def test_pruefen(ergebnis, bisher, minuten, status, grund):
     s, g = pruefen(ergebnis, bisher, T0, T0 + timedelta(minutes=minuten), REGELN)
-    assert s == status and grund in g, (s, g)
+    assert s == status and grund in ausgeben(g, "de"), (s, g)
 
 
 def test_pruefen_ohne_vollstaendige_vorlagen_erlaubt():
@@ -74,6 +76,8 @@ class FakeHA:
         self.optionen = {"intervall_minuten": 5, "sensor": "sensor.wasseruhr_cv_zaehlerstand", "http": False}
         self.optionen_fehler = None
         self.neustarts = 0
+        self.sprache = "de"  # Sprache in der Konfiguration von Home Assistant
+        self.config_status = 200
         ha = self
 
         class H(BaseHTTPRequestHandler):
@@ -93,6 +97,10 @@ class FakeHA:
                     alle = [{"entity_id": e, **z} for e, z in ha.zustaende.items()]
                     alle += [{"entity_id": e, "state": "idle", "attributes": {"friendly_name": n}} for e, n in ha.kameras.items()]
                     return self._antwort(200, json.dumps(alle).encode())
+                if self.path == "/core/api/config":
+                    if ha.config_status != 200:
+                        return self._antwort(ha.config_status)
+                    return self._antwort(200, json.dumps({"language": ha.sprache, "version": "2026.11.0"}).encode())
                 if self.path == "/addons/self/info":
                     return self._antwort(200, json.dumps({"result": "ok", "data": {"options": ha.optionen}}).encode())
                 if self.path.startswith("/core/api/states/"):
@@ -159,7 +167,7 @@ def _client(tmp_path, ha, **kwargs):
         daten_verzeichnis=tmp_path, modell_verzeichnis=MODELL, kamera="camera.wasseruhr",
         ha_url=ha.url, ha_token="geheim", intervall_minuten=0,
         sensor="sensor.wasseruhr_cv_zaehlerstand", input_number="input_number.wasserzaehler",
-        supervisor_url=ha.basis, ist_addon=True,
+        supervisor_url=ha.basis, ist_addon=True, sprache="de",
     )
     konfig.update(kwargs)
     return TestClient(create_app(Konfig(**konfig)))
@@ -182,6 +190,11 @@ def test_ablauf_ablesen_pruefen_schreiben(tmp_path, ha):
         assert sensor["attributes"]["device_class"] == "water"
         assert sensor["attributes"]["state_class"] == "total_increasing"
         assert sensor["attributes"]["unit_of_measurement"] == "m³"
+        # Attributnamen und Status sprachneutral, Texte in der Sprache des Dienstes (hier Deutsch)
+        assert set(sensor["attributes"]) >= {"last_check", "status", "reason", "recognized", "source"}
+        assert not {"letzte_pruefung", "grund", "erkannt", "quelle"} & set(sensor["attributes"])
+        assert sensor["attributes"]["status"] == "accepted" and sensor["attributes"]["reason"] == "erster sicherer Wert"
+        assert sensor["attributes"]["friendly_name"] == "Wasserzähler" and sensor["attributes"]["recognized"] == 506.616
         assert ha.dienste == [("input_number.set_value", {"entity_id": "input_number.wasserzaehler", "value": 506.616})]
 
         # 2. gleicher Wert 5 min später -> unverändert, Helfer nicht erneut gesetzt, Sensor aktualisiert
@@ -220,7 +233,7 @@ def test_korrektur_ueber_helfer_und_von_hand(tmp_path, ha):
         assert a["letzter"]["status"] == UEBERNOMMEN and a["zaehlerstand"] == 510.406
         # Korrektur in der Verwaltung
         a = c.post("/admin/automatik/zaehlerstand?wert=600,5").json()
-        assert a["zaehlerstand"] == 600.5 and a["letzter"]["status"] == "gesetzt"
+        assert a["zaehlerstand"] == 600.5 and a["letzter"]["status"] == GESETZT
         assert ha.zustaende["sensor.wasseruhr_cv_zaehlerstand"]["state"] == "600.500"
         assert ha.dienste[-1][1]["value"] == 600.5
         assert c.post("/admin/automatik/zaehlerstand?wert=abc").status_code == 400
@@ -273,7 +286,7 @@ def test_fehler_werden_gemeldet_und_nichts_ueberschrieben(tmp_path, ha):
     with _client(tmp_path, ha) as c:
         ha.kamera_status = 500
         a = _jetzt(c)
-        assert a["letzter"]["status"] == "fehler" and "offline" in a["letzter"]["grund"]
+        assert a["letzter"]["status"] == FEHLER and "offline" in a["letzter"]["grund"]
         assert "sensor.wasseruhr_cv_zaehlerstand" not in ha.zustaende  # noch kein Stand
         ha.kamera_status = 200
         ha.bild = LERNBILD["506.616"].read_bytes()
@@ -407,3 +420,51 @@ def test_kamera_waehlen_fehlerfaelle(tmp_path, ha):
         antwort = c.post("/admin/kamera?entity_id=camera.wasseruhr")
         assert antwort.status_code == 400 and "KAMERA=camera.wasseruhr" in antwort.json()["detail"]
         assert c.get("/admin/kameras").json()["speichern_moeglich"] is False
+
+
+# ---- Sprache von Protokoll und Sensor aus Home Assistant ----------------------------
+
+
+def test_sprache_von_home_assistant(tmp_path, ha):
+    """SPRACHE=auto: Sensor und Protokoll in der Sprache von HA, die Verwaltung in der des Browsers."""
+    ha.sprache = "en"
+    ha.bild = LERNBILD["506.616"].read_bytes()
+    with _client(tmp_path, ha, sprache="auto") as c:
+        assert sprache.dienst() == "en" and sprache.quelle() == "home_assistant"
+        _jetzt(c)
+        attribute = ha.zustaende["sensor.wasseruhr_cv_zaehlerstand"]["attributes"]
+        assert attribute["friendly_name"] == "Water meter" and attribute["reason"] == "first certain value"
+        # dieselbe Prüfung in der Verwaltung: je nach Browser
+        de = c.get("/admin/automatik", headers={"Accept-Language": "de"}).json()["letzter"]
+        en = c.get("/admin/automatik", headers={"Accept-Language": "en"}).json()["letzter"]
+        assert de["grund"] == "erster sicherer Wert" and en["grund"] == "first certain value"
+        assert de["status"] == en["status"] == UEBERNOMMEN
+
+
+def test_sprache_deutsch_und_unbekannt(tmp_path, ha):
+    with _client(tmp_path, ha, sprache="auto"):
+        assert sprache.dienst() == "de"
+    ha.sprache = "fr"  # nicht unterstützt -> Englisch
+    with _client(tmp_path, ha, sprache="auto"):
+        assert sprache.dienst() == "en"
+    ha.config_status = 404  # HA antwortet, verrät die Sprache aber nicht -> Englisch, kein neuer Versuch
+    with _client(tmp_path, ha, sprache="auto"):
+        assert sprache.dienst() == "en" and not sprache.offen()
+
+
+def test_sprache_wird_nachgeholt(tmp_path, ha):
+    """Beim Start war HA noch nicht erreichbar: die nächste Ablesung holt die Sprache nach."""
+    ha.config_status = 502
+    ha.bild = LERNBILD["506.616"].read_bytes()
+    with _client(tmp_path, ha, sprache="auto") as c:
+        assert sprache.dienst() == "en" and sprache.offen()
+        ha.config_status = 200
+        _jetzt(c)
+        assert sprache.dienst() == "de" and not sprache.offen()
+        assert ha.zustaende["sensor.wasseruhr_cv_zaehlerstand"]["attributes"]["friendly_name"] == "Wasserzähler"
+
+
+def test_feste_sprache_fragt_home_assistant_nicht(tmp_path, ha):
+    with _client(tmp_path, ha, sprache="en", kamera=None):
+        assert sprache.dienst() == "en"
+    assert "GET /core/api/config" not in ha.anfragen

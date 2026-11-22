@@ -14,6 +14,7 @@ import cv2
 import numpy as np
 
 from .erkennung import ZIFFER_BREITE, ZIFFER_HOEHE, ist_kontrastlos, korrelation
+from .sprache import T
 
 log = logging.getLogger(__name__)
 
@@ -43,7 +44,7 @@ class VorlagenSpeicher:
         """Alle Vorlagen von der Platte in den Speicher laden."""
         with self._lock:
             self._vorlagen = _von_platte(self.verzeichnis)
-        log.info("Vorlagen geladen: %s", self.anzahl_pro_ziffer())
+        log.info(T("log.vorlagen_geladen", anzahl=self.anzahl_pro_ziffer()))
 
     def momentaufnahme(self) -> dict[int, list[np.ndarray]]:
         """Kopie der Listen (Bilder werden nie verändert) für lock-freies Matching."""
@@ -82,7 +83,7 @@ class VorlagenSpeicher:
                     gespeichert += 1
             for z, v in entfernt:
                 (self.verzeichnis / str(z) / v.name).unlink(missing_ok=True)
-                log.info("Älteste Vorlage für Ziffer %d gelöscht: %s", z, v.name)
+                log.info(T("log.vorlage_geloescht", z=z, name=v.name))
             self._vorlagen = _von_platte(self.verzeichnis)
         return gespeichert
 
@@ -122,15 +123,15 @@ class VorlagenSpeicher:
         danach je Ziffer auf max_pro_ziffer (älteste fliegen raus).
         Rückgabe: (hinzugefügt, entfernt) als Listen von (ziffer, Vorlage)."""
         if len(ziffern) != len(bilder):
-            raise ValueError("ziffern und bilder müssen gleich lang sein")
+            raise ValueError("ziffern and bilder must have the same length")
         neu, entfernt = [], []
         for rolle, (z, bild) in enumerate(zip(ziffern, bilder), start=1):
             if ist_kontrastlos(bild):
-                log.warning("Rolle %d (Ziffer %d): kein Kontrast im Bild, nicht gelernt", rolle, z)
+                log.warning(T("log.kein_kontrast", rolle=rolle, z=z))
                 continue
             aehnlichste = max((korrelation(bild, v.bild) for v in bestand[z]), default=-1.0)
             if aehnlichste > DUPLIKAT_KORRELATION:
-                log.debug("Rolle %d (Ziffer %d): Duplikat (%.3f), nicht gespeichert", rolle, z, aehnlichste)
+                log.debug(T("log.duplikat", rolle=rolle, z=z, wert=f"{aehnlichste:.3f}"))
                 continue
             v = Vorlage(f"{zeitstempel}_r{rolle}.png", bild)
             bestand[z].append(v)
@@ -151,7 +152,7 @@ def _schreiben(verzeichnis: Path, ziffer: int, v: Vorlage) -> None:
     ordner.mkdir(parents=True, exist_ok=True)
     ok, png = cv2.imencode(".png", v.bild)
     if not ok:
-        raise RuntimeError("PNG-Kodierung fehlgeschlagen")
+        raise RuntimeError(T("fehler.png"))
     (ordner / v.name).write_bytes(png.tobytes())
 
 
@@ -164,12 +165,12 @@ def _von_platte(verzeichnis: Path) -> Bestand:
         for pfad in sorted(p for p in ordner.glob("*.png") if p.is_file() and not p.name.startswith(".")):
             bild = cv2.imdecode(np.frombuffer(pfad.read_bytes(), np.uint8), cv2.IMREAD_GRAYSCALE)
             if bild is None:
-                log.warning("Vorlage nicht lesbar, ignoriert: %s", pfad)
+                log.warning(T("log.vorlage_unlesbar", pfad=pfad))
                 continue
             if bild.shape != (ZIFFER_HOEHE, ZIFFER_BREITE):
                 bild = cv2.resize(bild, (ZIFFER_BREITE, ZIFFER_HOEHE), interpolation=cv2.INTER_AREA)
             if ist_kontrastlos(bild):
-                log.warning("Kontrastlose Vorlage ignoriert (würde alles treffen): %s", pfad)
+                log.warning(T("log.vorlage_kontrastlos", pfad=pfad))
                 continue
             bestand[z].append(Vorlage(pfad.name, bild))
     return bestand

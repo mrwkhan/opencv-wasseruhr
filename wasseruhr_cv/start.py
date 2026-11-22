@@ -12,6 +12,9 @@ import json
 import os
 import sys
 from pathlib import Path
+from typing import NoReturn
+
+from app.sprache import SPRACHEN, T, ausgeben
 
 OPTIONEN = Path(os.environ.get("ADDON_OPTIONEN", "/data/options.json"))
 PORT = "8099"  # Ingress-Port des Add-ons (config.yaml: Standard ingress_port)
@@ -36,6 +39,7 @@ ZUORDNUNG = {
     "verschiebung": "VERSCHIEBUNG",
     "rois": "ROIS",
     "admin_nur_ueber_ingress": "ADMIN_NUR_INGRESS",
+    "sprache": "SPRACHE",
     "log_level": "LOG_LEVEL",
 }
 # Im Add-on bedeutet ein geleertes Feld hier "keine Entität" statt "Standard"
@@ -55,12 +59,20 @@ def umgebung_setzen(optionen: dict, addon: bool = False) -> None:
         os.environ[variable] = str(wert).strip()
 
 
+def abbrechen(text) -> NoReturn:
+    """Startfehler ins Protokoll: in der eingestellten Sprache, sonst Englisch und Deutsch
+    (die Sprache von Home Assistant ist zu diesem Zeitpunkt noch nicht bekannt)."""
+    wahl = (os.environ.get("SPRACHE") or "").strip().lower()
+    sprachen = [wahl] if wahl in SPRACHEN else ["en", "de"]
+    sys.exit("\n".join(f"[wasseruhr] {ausgeben(text, s)}" for s in sprachen))
+
+
 def main() -> None:
     addon = OPTIONEN.is_file()
     try:
         optionen = json.loads(OPTIONEN.read_text()) if addon else {}
     except ValueError as e:
-        sys.exit(f"[wasseruhr] {OPTIONEN} ist kein gültiges JSON: {e}")
+        abbrechen(T("start.json", datei=OPTIONEN, fehler=e))
     umgebung_setzen(optionen, addon=addon)
 
     from app.konfig import Konfig, KonfigFehler
@@ -68,11 +80,14 @@ def main() -> None:
     try:
         konfig = Konfig.aus_umgebung()
     except KonfigFehler as e:
-        sys.exit(f"[wasseruhr] Konfiguration ungültig: {e}. Bitte in der Konfiguration korrigieren.")
+        abbrechen(T("start.konfig", fehler=e))
 
+    from app import ha
     from app.main import app
     from app.server import starten
 
+    if konfig.ha_token:  # SPRACHE=auto: schon die ersten Meldungen in der Sprache von HA
+        ha.sprache_uebernehmen(konfig.ha_url, konfig.ha_token)
     starten(app, konfig)
 
 

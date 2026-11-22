@@ -1,6 +1,58 @@
 # Changelog
 
+## 1.5.0
+
+**English**
+
+- **English and German** for everything you see: training page, admin page,
+  API error messages, log, sensor and the debug image. The pages follow the
+  browser language; a **DE / EN** switch at the top right changes it and is
+  remembered. Log and sensor follow the Home Assistant language.
+- New option `sprache` (`auto`, `de`, `en`) to set one language for
+  everything. Docker: variable `SPRACHE`.
+- **Breaking:** the sensor attributes are now language-neutral so that
+  automations work in every language: `last_check`, `reason`, `recognized`,
+  `source` instead of `letzte_pruefung`, `grund`, `erkannt`, `quelle`, and
+  `status` is `accepted`, `unchanged`, `rejected`, `error` or `set` instead of
+  `übernommen`, `unverändert`, `verworfen`, `fehler`, `gesetzt`. Please adjust
+  automations that use these attributes. The sensor itself and its value stay
+  the same.
+- English values are accepted as well: `on`/`off` for switches, `off` for "no
+  entity", `merge`/`replace` as import mode.
+- English README on GitHub (German: `README.de.md`), documentation and
+  changelog in both languages.
+
+**Deutsch**
+
+- **Deutsch und Englisch** für alles Sichtbare: Lernseite, Verwaltung,
+  Fehlermeldungen der API, Protokoll, Sensor und Debug-Bild. Die Seiten folgen
+  der Browsersprache; ein Umschalter **DE / EN** oben rechts wechselt sie und
+  merkt sich die Wahl. Protokoll und Sensor folgen der Sprache von Home
+  Assistant.
+- Neue Option `sprache` (`auto`, `de`, `en`), um eine Sprache für alles
+  festzulegen. Docker: Variable `SPRACHE`.
+- **Achtung:** Die Attribute des Sensors sind jetzt sprachneutral, damit
+  Automationen in jeder Sprache funktionieren: `last_check`, `reason`,
+  `recognized`, `source` statt `letzte_pruefung`, `grund`, `erkannt`, `quelle`,
+  und `status` ist `accepted`, `unchanged`, `rejected`, `error` oder `set`
+  statt `übernommen`, `unverändert`, `verworfen`, `fehler`, `gesetzt`.
+  Automationen, die diese Attribute nutzen, bitte anpassen. Der Sensor selbst
+  und sein Wert bleiben gleich.
+- Englische Werte werden ebenfalls angenommen: `on`/`off` für Schalter, `off`
+  für „keine Entität“, `merge`/`replace` als Importmodus.
+- Englische README auf GitHub (deutsch: `README.de.md`), Dokumentation und
+  Changelog in beiden Sprachen.
+
 ## 1.4.3
+
+**English**
+
+- The `input_number` helper is brought to the confirmed meter reading even if
+  the value does not change – e.g. if it still contains the value of an
+  earlier tool after switching over. Before, it lagged behind until the next
+  new value. A correction made by hand in the helper is still accepted.
+
+**Deutsch**
 
 - Der `input_number`-Helfer wird auch dann auf den bestätigten Zählerstand
   gebracht, wenn sich der Wert nicht ändert – z. B. wenn er nach der Umstellung
@@ -9,6 +61,17 @@
   weiterhin übernommen.
 
 ## 1.4.2
+
+**English**
+
+- **Select the camera** on the admin page: list of all cameras from Home
+  Assistant with preview. "Apply" stores the choice in the add-on
+  configuration and restarts the add-on.
+- `kamera` and `input_number` always appear in the configuration form, even
+  while empty (before, they were hidden among the optional options).
+- Without a camera, training page, admin page and log point to the selection.
+
+**Deutsch**
 
 - **Kamera auswählen** in der Verwaltung: Liste aller Kameras aus Home
   Assistant mit Vorschaubild. „Übernehmen“ speichert die Wahl in der
@@ -19,6 +82,17 @@
 
 ## 1.4.1
 
+**English**
+
+- If the configured `input_number` helper is missing in Home Assistant, the
+  admin page now says so clearly ("… does not exist in Home Assistant").
+  Before, it showed "ok" although nothing was written. Home Assistant itself
+  does not report this case as an error.
+- Docs: the sensor is created if it is missing; an existing sensor with the
+  configured name is deliberately overwritten.
+
+**Deutsch**
+
 - Fehlt der eingestellte `input_number`-Helfer in Home Assistant, meldet die
   Verwaltung das jetzt klar („… gibt es in Home Assistant nicht“). Vorher stand
   dort „ok“, obwohl nichts geschrieben wurde. Home Assistant meldet diesen Fall
@@ -27,6 +101,24 @@
   dem eingestellten Namen wird bewusst überschrieben.
 
 ## 1.4.0
+
+**English**
+
+- **Standalone:** the add-on reads the camera itself at fixed intervals
+  (option `intervall_minuten`), checks the value (certain only, forward only,
+  at most `max_m3_pro_stunde`) and writes it to the sensor
+  `sensor.wasseruhr_cv_zaehlerstand` (m³, Energy dashboard) and optionally to
+  an `input_number` helper. The Node-RED flow is no longer needed.
+- Admin page: auto-reading status, "Read & send now", set the meter reading by
+  hand, reset the model.
+- The **initial model** is part of the add-on and is installed on first
+  start. The training images show only the counter.
+- **Access:** HTTP and HTTPS in the local network can be switched separately
+  (options `http`, `https`), ports freely selectable under Configuration →
+  Network (default 8099 and 8100). HTTPS uses the certificate from `/ssl` or a
+  self-signed one.
+
+**Deutsch**
 
 - **Eigenständig:** Das Add-on liest die Kamera selbst in festen Abständen ab
   (Option `intervall_minuten`), prüft den Wert (nur sicher, nur vorwärts,
@@ -43,6 +135,31 @@
   selbstsigniertes.
 
 ## 1.3.1
+
+**English**
+
+Security:
+
+- Websites in the browser can no longer teach the service values or trigger
+  actions (origin check against CSRF). Node-RED, curl and the HA ingress are
+  not affected.
+- Protection against memory exhaustion: images at most 10 MB and 25
+  megapixels (a crafted JPEG of a few hundred bytes could take the service
+  down), model import at most 300 MB.
+- Port 8099 is closed by default in the add-on. Enter it under Configuration
+  → Network if needed.
+- "Read camera now" no longer follows redirects, so the HA token never goes
+  to another destination; only http(s), response at most 10 MB.
+- Security headers (nosniff, frame-ancestors, Referrer-Policy).
+
+Fixes:
+
+- Damaged or encrypted ZIPs on import give a message instead of a server
+  error.
+- Training page and admin page accept meter readings with more than 5
+  integer digits (with more than 8 wheels).
+
+**Deutsch**
 
 Sicherheit:
 
@@ -66,6 +183,22 @@ Fehler:
   Vorkommastellen (bei mehr als 8 Rollen).
 
 ## 1.3.0
+
+**English**
+
+- First version as a Home Assistant add-on (aarch64, amd64), installable via
+  the repository.
+- Training page and new **admin page** in the sidebar (ingress): view
+  templates, correct and delete training images, rebuild templates, learn
+  your own image, export and import the model as a ZIP.
+- **Read camera now**: fetches the image of the configured camera via the Home
+  Assistant API.
+- Settings as add-on options. The admin page is only reachable for logged-in
+  users by default.
+- Same image for Docker Compose: without add-on options the environment
+  variables apply.
+
+**Deutsch**
 
 - Erste Version als Home-Assistant-Add-on (aarch64, amd64), installierbar über
   das Repository.

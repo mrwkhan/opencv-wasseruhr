@@ -15,7 +15,11 @@ import urllib.error
 import urllib.request
 from urllib.parse import quote, urlsplit
 
+from . import sprache
+from .sprache import T
+
 TIMEOUT_S = 20
+SPRACHE_TIMEOUT_S = 5  # beim Start nicht lange auf Home Assistant warten
 MAX_ANTWORT_BYTES = 1024 * 1024
 
 
@@ -27,7 +31,7 @@ class HAFehler(RuntimeError):
 
 class _KeineWeiterleitung(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
-        raise HAFehler(f"Home Assistant leitet weiter (HTTP {code}) – aus Sicherheitsgründen nicht gefolgt", code)
+        raise HAFehler(T("ha.weiterleitung", code=code), code)
 
 
 _OEFFNER = urllib.request.build_opener(_KeineWeiterleitung)
@@ -35,11 +39,11 @@ _OEFFNER = urllib.request.build_opener(_KeineWeiterleitung)
 
 def anfrage(
     basis: str, token: str, methode: str, pfad: str, daten: dict | None = None,
-    max_bytes: int = MAX_ANTWORT_BYTES,
+    max_bytes: int = MAX_ANTWORT_BYTES, timeout: float = TIMEOUT_S,
 ) -> bytes:
     url = basis.rstrip("/") + pfad
     if urlsplit(url).scheme not in ("http", "https"):
-        raise HAFehler("HA_URL muss mit http:// oder https:// beginnen")
+        raise HAFehler(T("ha.schema"))
     kopf = {"Authorization": f"Bearer {token}"}
     body = None
     if daten is not None:
@@ -47,16 +51,16 @@ def anfrage(
         kopf["Content-Type"] = "application/json"
     req = urllib.request.Request(url, data=body, headers=kopf, method=methode)
     try:
-        with _OEFFNER.open(req, timeout=TIMEOUT_S) as antwort:  # noqa: S310 – Schema oben geprüft
+        with _OEFFNER.open(req, timeout=timeout) as antwort:  # noqa: S310 – Schema oben geprüft
             inhalt = antwort.read(max_bytes + 1)
     except HAFehler:
         raise
     except urllib.error.HTTPError as e:
         raise HAFehler(f"HTTP {e.code} ({e.reason})", e.code) from None
     except (urllib.error.URLError, TimeoutError, OSError) as e:
-        raise HAFehler(f"Home Assistant nicht erreichbar ({getattr(e, 'reason', e)})") from None
+        raise HAFehler(T("ha.nicht_erreichbar", grund=getattr(e, "reason", e))) from None
     if len(inhalt) > max_bytes:
-        raise HAFehler(f"Antwort größer als {max_bytes // (1024 * 1024)} MB")
+        raise HAFehler(T("ha.zu_gross", mb=max_bytes // (1024 * 1024)))
     return inhalt
 
 
@@ -91,6 +95,25 @@ def kameras(basis: str, token: str) -> list[dict]:
         for z in alle if str(z.get("entity_id", "")).startswith("camera.")
     ]
     return sorted(liste, key=lambda k: k["name"].lower())
+
+
+def sprache_uebernehmen(basis: str, token: str) -> bool:
+    """Bei SPRACHE=auto die Sprache von Home Assistant übernehmen (GET /config).
+    True, wenn sie dabei feststand. Ist Home Assistant (noch) nicht erreichbar,
+    bleibt es beim Englischen, und der nächste Aufruf versucht es erneut."""
+    if not sprache.offen():
+        return False
+    sprache.versucht(merken=True)
+    try:
+        daten = json.loads(anfrage(basis, token, "GET", "/config", timeout=SPRACHE_TIMEOUT_S))
+    except HAFehler as e:
+        if e.code is None or e.code >= 500:
+            return False
+        daten = {}  # HA antwortet, verrät die Sprache aber nicht
+    except ValueError:
+        daten = {}
+    sprache.von_home_assistant(daten.get("language") if isinstance(daten, dict) else None)
+    return True
 
 
 # ---- Supervisor-API (nur im Add-on): eigene Optionen lesen/setzen, neu starten -----

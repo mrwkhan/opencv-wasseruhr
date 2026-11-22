@@ -8,6 +8,7 @@ import cv2
 import numpy as np
 
 from .erkennung import ZiffernErgebnis
+from .sprache import T, uebersetzen
 
 GRUEN = (0, 200, 0)
 ROT = (0, 0, 255)
@@ -26,6 +27,7 @@ def zeichne(
     sicher_pro_rolle: Sequence[bool],
     wert: float | None,
     sicher: bool,
+    sprache: str | None = None,
 ) -> bytes:
     oben = bild.copy()
     for (x1, y1, x2, y2), e, ok in zip(rois, ergebnisse, sicher_pro_rolle):
@@ -58,7 +60,9 @@ def zeichne(
         teile += [k, trenner]
     streifen = np.hstack(teile[:-1])
 
-    titel = f"wert={'-' if wert is None else f'{wert:.3f}'}  sicher={'ja' if sicher else 'nein'}"
+    # Nur ASCII: die Hershey-Schriften von OpenCV kennen keine Umlaute
+    titel = uebersetzen("debug.titel", sprache, wert="-" if wert is None else f"{wert:.3f}",
+                        urteil=T("ui.sicher" if sicher else "ui.unsicher"))
     kopf = np.zeros((28, max(oben.shape[1], streifen.shape[1]), 3), np.uint8)
     cv2.putText(kopf, titel, (6, 19), SCHRIFT, 0.55, GRUEN if sicher else ROT, 1, cv2.LINE_AA)
 
@@ -66,7 +70,7 @@ def zeichne(
     zeilen = [_auffuellen(oben, breite), kopf, _auffuellen(streifen, breite)]
     ok, png = cv2.imencode(".png", np.vstack(zeilen))
     if not ok:
-        raise RuntimeError("PNG-Kodierung fehlgeschlagen")
+        raise RuntimeError(T("fehler.png"))
     return png.tobytes()
 
 
