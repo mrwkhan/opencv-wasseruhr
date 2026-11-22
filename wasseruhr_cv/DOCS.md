@@ -46,13 +46,18 @@ erhalten.
 **Wohin geschrieben wird:**
 
 - **Sensor** (Option `sensor`, Standard `sensor.wasseruhr_cv_zaehlerstand`):
-  der Zählerstand in m³. In den Attributen stehen `status` (übernommen,
-  unverändert, verworfen, fehler), `grund`, `erkannt` (der zuletzt abgelesene
-  Wert) und `letzte_pruefung`. Nach einem Neustart von Home Assistant ist der
-  Sensor spätestens nach dem nächsten Intervall wieder da.
-- **Helfer** (Option `input_number`, optional): Ein vorhandener Zahlen-Helfer,
-  z. B. `input_number.wasserzaehler`, wird bei jedem neuen Stand mitgesetzt.
-  Maximum mindestens 100000 und Schrittweite 0.001 einstellen.
+  der Zählerstand in m³. Den Sensor muss es vorher nicht geben, das Add-on
+  legt ihn an. Trägst du den Namen eines **vorhandenen** Sensors ein, wird
+  dessen Wert überschrieben, z. B. um einen bisherigen Sensor weiterzuführen.
+  In den Attributen stehen `status` (übernommen, unverändert, verworfen,
+  fehler), `grund`, `erkannt` (der zuletzt abgelesene Wert) und
+  `letzte_pruefung`. Nach einem Neustart von Home Assistant ist der Sensor
+  spätestens nach dem nächsten Intervall wieder da.
+- **Helfer** (Option `input_number`, optional): Ein Zahlen-Helfer, z. B.
+  `input_number.wasserzaehler`, wird bei jedem neuen Stand mitgesetzt. Den
+  Helfer **muss es schon geben** (Einstellungen → Geräte & Dienste → Helfer →
+  Nummer; Maximum mindestens 100000, Schrittweite 0.001). Fehlt er, meldet die
+  Verwaltung „… gibt es in Home Assistant nicht“.
 
 **Korrigieren**, z. B. nach einem Zählertausch oder wenn dauerhaft „kleiner als
 der bisherige Stand“ gemeldet wird: Verwaltung → Automatik → **Zählerstand von
@@ -130,8 +135,8 @@ Ziffern, die eintragen, die mehr vom Fenster einnimmt.
 |---|---|---|
 | `kamera` | – | Kamera-Entität, die abgelesen wird |
 | `intervall_minuten` | 5 | Abstand der automatischen Ablesung, 0 = aus |
-| `sensor` | `sensor.wasseruhr_cv_zaehlerstand` | Ziel für den Zählerstand, leer = kein Sensor |
-| `input_number` | – | optional zusätzlich ein Zahlen-Helfer |
+| `sensor` | `sensor.wasseruhr_cv_zaehlerstand` | Ziel für den Zählerstand, wird angelegt bzw. überschrieben; leer = kein Sensor |
+| `input_number` | – | optional zusätzlich ein vorhandener Zahlen-Helfer |
 | `max_m3_pro_stunde` | 3 | schnellerer Anstieg = Lesefehler |
 | `toleranz_m3` | 0.002 | kleine Rückwärts-Abweichung ignorieren |
 | `alle_ziffern_gelernt` | an | erst schreiben, wenn 0–9 alle gelernt sind |
@@ -187,6 +192,7 @@ Lernbildern mit den neuen ROIs neu erzeugt.
 | Automatik: „fehler – … HTTP 500 (Kamera liefert kein Bild)“ | Kamera gerade offline |
 | Automatik: „verworfen – unsicher …“ | Bild auf der Lernseite prüfen und nachlernen |
 | Automatik: dauerhaft „kleiner als der bisherige Stand“ | Zählerstand in der Verwaltung von Hand setzen |
+| Verwaltung zeigt „input_number… gibt es in Home Assistant nicht“ | Helfer anlegen (Einstellungen → Geräte & Dienste → Helfer → Nummer) oder Option `input_number` leeren |
 | Verwaltung zeigt „Übertragen fehlgeschlagen: input_number…“ | Maximum bzw. Schrittweite des Helfers passen nicht (Maximum ≥ 100000, Schritt 0.001) |
 | `http://<ha>:8099/` nicht erreichbar | Option `http` einschalten und unter Netzwerk den Port prüfen |
 | HTTPS: Browser warnt vor dem Zertifikat | Selbstsigniertes Zertifikat. Eigenes in `/ssl` ablegen (Optionen `zertifikat`, `schluessel`) |

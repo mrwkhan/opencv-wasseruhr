@@ -1,5 +1,5 @@
 name: Wasseruhr-CV
-version: "1.4.0"
+version: "1.4.1"
 slug: wasseruhr_cv
 description: >-
   Liest eine Wasseruhr per Kamera und OpenCV ab (kein LLM, keine Cloud) und

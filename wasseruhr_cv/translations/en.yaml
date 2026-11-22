@@ -11,12 +11,13 @@ configuration:
     name: Sensor
     description: >-
       The add-on writes the checked meter reading here (m³, device class
-      water), also usable in the Energy dashboard. Empty = no sensor.
+      water), also usable in the Energy dashboard. Created if missing; an
+      existing sensor is overwritten. Empty = no sensor.
   input_number:
     name: Helper (input_number)
     description: >-
-      Optional: additionally set an existing number helper, e.g.
-      input_number.water_meter. A value set there by hand counts as a
+      Optional: additionally set a number helper, e.g. input_number.water_meter.
+      The helper must already exist. A value set there by hand counts as a
       correction of the meter reading.
   max_m3_pro_stunde:
     name: Maximum increase (m³ per hour)

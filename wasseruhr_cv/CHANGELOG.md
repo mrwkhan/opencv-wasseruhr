@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.4.1
+
+- Fehlt der eingestellte `input_number`-Helfer in Home Assistant, meldet die
+  Verwaltung das jetzt klar („… gibt es in Home Assistant nicht“). Vorher stand
+  dort „ok“, obwohl nichts geschrieben wurde. Home Assistant meldet diesen Fall
+  selbst nicht als Fehler.
+- Doku: Der Sensor wird angelegt, falls er fehlt; ein vorhandener Sensor mit
+  dem eingestellten Namen wird bewusst überschrieben.
+
 ## 1.4.0
 
 - **Eigenständig:** Das Add-on liest die Kamera selbst in festen Abständen ab

@@ -1,6 +1,6 @@
 [project]
 name = "wasseruhr-cv"
-version = "1.4.0"
+version = "1.4.1"
 description = "Liest eine Wasseruhr per klassischem Computer Vision ab (OpenCV Template Matching) – Home-Assistant-Add-on"
 requires-python = ">=3.12"
 license = "MIT"

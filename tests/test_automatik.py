@@ -28,7 +28,7 @@ def _ergebnis(wert, sicher=True, fehlend=()):
     return {"wert": wert, "sicher": sicher, "ziffern": ziffern, "fehlende_vorlagen": list(fehlend)}
 
 
-# ---- Plausibilität (wie bisher im Node-RED-Flow) ---------------------------------
+# ---- Plausibilität ----------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -63,7 +63,10 @@ class FakeHA:
     def __init__(self):
         self.bild: bytes = b""
         self.kamera_status = 200
-        self.zustaende: dict[str, dict] = {}
+        # wie in einem HA, in dem der Helfer angelegt ist (frisch: 0)
+        self.zustaende: dict[str, dict] = {
+            "input_number.wasserzaehler": {"state": "0.0", "last_changed": "2026-01-01T00:00:00+00:00"},
+        }
         self.dienste: list[tuple[str, dict]] = []
         self.anfragen: list[str] = []
         self.fehler_bei_states = False
@@ -147,7 +150,7 @@ def _jetzt(c):
     return antwort.json()
 
 
-def test_ablauf_wie_bisher_mit_node_red(tmp_path, ha):
+def test_ablauf_ablesen_pruefen_schreiben(tmp_path, ha):
     with _client(tmp_path, ha) as c:
         # 1. erster sicherer Wert -> Sensor + Helfer
         ha.bild = LERNBILD["506.616"].read_bytes()
@@ -238,6 +241,34 @@ def test_fehler_werden_gemeldet_und_nichts_ueberschrieben(tmp_path, ha):
         a = _jetzt(c)
         assert a["letzter"]["status"] == UEBERNOMMEN
         assert "sensor.wasseruhr_cv_zaehlerstand: HTTP 500" in a["letzter"]["uebertragen"]
+
+
+def test_fehlender_helfer_wird_gemeldet_statt_ok(tmp_path, ha):
+    """HA meldet einen Dienstaufruf für eine fehlende Entität nicht als Fehler – das Add-on schon."""
+    del ha.zustaende["input_number.wasserzaehler"]
+    with _client(tmp_path, ha) as c:
+        ha.bild = LERNBILD["506.616"].read_bytes()
+        a = _jetzt(c)
+        assert a["letzter"]["status"] == UEBERNOMMEN
+        assert "input_number.wasserzaehler gibt es in Home Assistant nicht" in a["letzter"]["uebertragen"]
+        assert a["input_number_fehlt"] is True
+        assert ha.dienste == []  # nicht blind geschrieben
+        assert ha.zustaende["sensor.wasseruhr_cv_zaehlerstand"]["state"] == "506.616"  # Sensor trotzdem
+        assert "gibt es in Home Assistant nicht" in c.get("/admin").text  # Hinweis in der Verwaltung
+        # Helfer angelegt -> beim nächsten Setzen wird neu geprüft und geschrieben
+        ha.zustaende["input_number.wasserzaehler"] = {"state": "0.0", "last_changed": T0.isoformat()}
+        a = c.post("/admin/automatik/zaehlerstand?wert=506.620").json()
+        assert a["letzter"]["uebertragen"] == "ok" and a["input_number_fehlt"] is False
+        assert ha.dienste == [("input_number.set_value", {"entity_id": "input_number.wasserzaehler", "value": 506.62})]
+
+
+def test_vorhandener_sensor_wird_ueberschrieben(tmp_path, ha):
+    """Gewollt: Wer einen vorhandenen Sensor einträgt, führt ihn mit dem Zählerstand weiter."""
+    ha.zustaende["sensor.wasserzaehler"] = {"state": "123.000", "attributes": {"friendly_name": "Alt"}}
+    with _client(tmp_path, ha, sensor="sensor.wasserzaehler") as c:
+        ha.bild = LERNBILD["506.616"].read_bytes()
+        _jetzt(c)
+    assert ha.zustaende["sensor.wasserzaehler"]["state"] == "506.616"
 
 
 def test_ohne_kamera_keine_automatik(tmp_path, ha):

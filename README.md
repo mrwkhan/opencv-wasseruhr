@@ -165,8 +165,8 @@ Umgebungsvariablen:
 | `VERSCHIEBUNG` | `verschiebung` | `3` | Suchbereich des Template Matchings in px (±) |
 | `KAMERA` | `kamera` | – | Kamera-Entität, die abgelesen wird |
 | `INTERVALL_MINUTEN` | `intervall_minuten` | `5` | automatische Ablesung, `0` = aus (braucht `KAMERA` und HA-Zugang) |
-| `SENSOR` | `sensor` | `sensor.wasseruhr_cv_zaehlerstand` | Ziel für den Zählerstand, `-` = kein Sensor |
-| `INPUT_NUMBER` | `input_number` | – | optional zusätzlich ein Zahlen-Helfer |
+| `SENSOR` | `sensor` | `sensor.wasseruhr_cv_zaehlerstand` | Ziel für den Zählerstand, wird angelegt bzw. überschrieben; `-` = kein Sensor |
+| `INPUT_NUMBER` | `input_number` | – | optional zusätzlich ein vorhandener Zahlen-Helfer (fehlt er, wird das gemeldet) |
 | `MAX_M3_PRO_STUNDE` | `max_m3_pro_stunde` | `3` | schnellerer Anstieg = Lesefehler |
 | `TOLERANZ_M3` | `toleranz_m3` | `0.002` | kleine Rückwärts-Abweichung ignorieren |
 | `ALLE_ZIFFERN_GELERNT` | `alle_ziffern_gelernt` | `an` | erst schreiben, wenn 0–9 gelernt sind |

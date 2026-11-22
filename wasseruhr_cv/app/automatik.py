@@ -90,6 +90,7 @@ class Automatik:
         self._thread: threading.Thread | None = None
         self._stand, self._stand_zeit = self._laden()
         self._letzter: dict | None = None
+        self._helfer_fehlt: bool | None = None  # None = noch nicht geprüft / HA nicht erreichbar
         self.regeln = Regeln(
             konfig.max_m3_pro_stunde, konfig.toleranz_m3, konfig.alle_ziffern_gelernt,
             konfig.min_score, konfig.min_abstand,
@@ -171,12 +172,13 @@ class Automatik:
     def _basis(self) -> tuple[float | None, datetime | None]:
         """Vergleichswert. Ein von Hand geänderter input_number gilt als Korrektur."""
         if self.konfig.input_number:
+            z, wert = None, None
             try:
                 z = ha.zustand(self.konfig.ha_url, self.konfig.ha_token, self.konfig.input_number)
+                self._helfer_fehlt = z is None
                 wert = float(z["state"]) if z else None
             except (ha.HAFehler, ValueError, KeyError, TypeError) as e:
                 log.warning("Automatik: %s nicht lesbar (%s) – nutze gespeicherten Stand", self.konfig.input_number, e)
-                wert = None
             if wert is not None and wert > 0 and (self._stand is None or round(wert - self._stand, 3) != 0):
                 try:
                     geaendert = datetime.fromisoformat(z["last_changed"])
@@ -243,15 +245,33 @@ class Automatik:
                 ha.zustand_setzen(k.ha_url, k.ha_token, k.sensor, f"{self._stand:.3f}", attribute)
             except ha.HAFehler as e:
                 fehler.append(f"{k.sensor}: {e}")
-        if k.input_number and status in (UEBERNOMMEN, GESETZT):
-            try:
-                ha.dienst(k.ha_url, k.ha_token, "input_number", "set_value",
-                          {"entity_id": k.input_number, "value": self._stand})
-            except ha.HAFehler as e:
-                fehler.append(f"{k.input_number}: {e}")
+        if k.input_number:
+            # Home Assistant meldet einen Dienstaufruf für eine fehlende Entität nicht als
+            # Fehler – deshalb selbst prüfen, statt "ok" zu melden, obwohl nichts ankam.
+            vorher = self._helfer_fehlt
+            if status == GESETZT or self._helfer_fehlt is None:
+                self._helfer_fehlt = self._helfer_fehlt_pruefen()
+            if self._helfer_fehlt:
+                meldung = (f"{k.input_number} gibt es in Home Assistant nicht – Helfer anlegen "
+                           "(Einstellungen → Geräte & Dienste → Helfer → Nummer) oder Option input_number leeren")
+                if not vorher:  # nur beim ersten Erkennen ins Protokoll, nicht alle 5 Minuten
+                    log.warning("Automatik: %s", meldung)
+                return "; ".join([*fehler, meldung])
+            if status in (UEBERNOMMEN, GESETZT):
+                try:
+                    ha.dienst(k.ha_url, k.ha_token, "input_number", "set_value",
+                              {"entity_id": k.input_number, "value": self._stand})
+                except ha.HAFehler as e:
+                    fehler.append(f"{k.input_number}: {e}")
         for f in fehler:
             log.warning("Automatik: Übertragen fehlgeschlagen – %s", f)
         return "; ".join(fehler) if fehler else "ok"
+
+    def _helfer_fehlt_pruefen(self) -> bool | None:
+        try:
+            return ha.zustand(self.konfig.ha_url, self.konfig.ha_token, self.konfig.input_number) is None
+        except ha.HAFehler:
+            return None  # unklar – dann trotzdem schreiben und einen Fehler melden lassen
 
     # ---- Anzeige -------------------------------------------------------------------
 
@@ -263,6 +283,7 @@ class Automatik:
             "kamera": k.kamera,
             "sensor": k.sensor,
             "input_number": k.input_number,
+            "input_number_fehlt": bool(k.input_number) and self._helfer_fehlt is True,
             "zaehlerstand": self._stand,
             "zaehlerstand_zeit": self._stand_zeit.isoformat() if self._stand_zeit else None,
             "letzter": self._letzter,

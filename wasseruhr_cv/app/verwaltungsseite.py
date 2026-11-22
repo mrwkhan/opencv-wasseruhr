@@ -123,7 +123,8 @@ async function ladeInfo() {
 // ---- Automatik ----------------------------------------------------------------
 function zeigeAutomatik(a) {
   const l = a.letzter;
-  const ziele = [a.sensor, a.input_number].filter(Boolean).join(", ") || "keine – nur Anzeige hier";
+  const helfer = a.input_number ? a.input_number + (a.input_number_fehlt ? " – gibt es in Home Assistant nicht!" : "") : null;
+  const ziele = [a.sensor, helfer].filter(Boolean).join(", ") || "keine – nur Anzeige hier";
   const zeilen = [
     ["Status", a.aktiv ? `liest alle ${a.intervall_minuten} min ab` : (a.intervall_minuten === 0 ? "aus (Intervall 0)" : "aus – Kamera in der Konfiguration eintragen")],
     ["Kamera", a.kamera || "–"],

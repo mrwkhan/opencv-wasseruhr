@@ -12,14 +12,15 @@ configuration:
   sensor:
     name: Sensor
     description: >-
-      Hierhin schreibt das Add-on den geprüften Zählerstand (m³, Gerätklasse
-      Wasser), auch fürs Energie-Dashboard. Leer lassen = kein Sensor.
+      Hierhin schreibt das Add-on den geprüften Zählerstand (m³, Geräteklasse
+      Wasser), auch fürs Energie-Dashboard. Fehlt der Sensor, wird er angelegt;
+      ein vorhandener Sensor wird überschrieben. Leer lassen = kein Sensor.
   input_number:
     name: Helfer (input_number)
     description: >-
-      Optional: zusätzlich einen vorhandenen Zahlen-Helfer setzen, z. B.
-      input_number.wasserzaehler. Ein dort von Hand gesetzter Wert gilt als
-      Korrektur des Zählerstands.
+      Optional: zusätzlich einen Zahlen-Helfer setzen, z. B.
+      input_number.wasserzaehler. Den Helfer muss es schon geben. Ein dort von
+      Hand gesetzter Wert gilt als Korrektur des Zählerstands.
   max_m3_pro_stunde:
     name: Höchster Anstieg (m³ pro Stunde)
     description: >-
