@@ -5,12 +5,11 @@ secrets*
 *.pem
 *.key
 
-# Persönliche Daten: Lernbilder, Vorlagen und Modell-Exporte zeigen die eigene Wasseruhr
+# Laufende Daten und Exporte (Originalfotos der Uhr). Das mitgelieferte Modell in
+# wasseruhr_cv/modell/ ist bewusst Teil des Repos – nur Zählwerk, siehe tests/test_addon.py
 data/
 *.zip
 snapshot_*.jpg
-wasseruhr_cv/modell/*
-!wasseruhr_cv/modell/.gitkeep
 
 # Python & Werkzeuge
 .venv/

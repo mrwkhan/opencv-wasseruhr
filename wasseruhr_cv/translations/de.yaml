@@ -2,8 +2,59 @@ configuration:
   kamera:
     name: Kamera
     description: >-
-      Kamera-Entität für „Kamera jetzt ablesen“ auf der Lernseite und in der
-      Verwaltung. Leer lassen, wenn nur Node-RED Bilder schickt.
+      Kamera-Entität, deren Bild abgelesen wird, z. B. camera.wasseruhr.
+      Ohne Kamera gibt es keine automatische Ablesung.
+  intervall_minuten:
+    name: Intervall (Minuten)
+    description: >-
+      So oft wird die Kamera automatisch abgelesen. 0 schaltet die automatische
+      Ablesung aus.
+  sensor:
+    name: Sensor
+    description: >-
+      Hierhin schreibt das Add-on den geprüften Zählerstand (m³, Gerätklasse
+      Wasser), auch fürs Energie-Dashboard. Leer lassen = kein Sensor.
+  input_number:
+    name: Helfer (input_number)
+    description: >-
+      Optional: zusätzlich einen vorhandenen Zahlen-Helfer setzen, z. B.
+      input_number.wasserzaehler. Ein dort von Hand gesetzter Wert gilt als
+      Korrektur des Zählerstands.
+  max_m3_pro_stunde:
+    name: Höchster Anstieg (m³ pro Stunde)
+    description: >-
+      Steigt der Wert schneller, gilt er als Lesefehler und wird verworfen
+      (Standard 3).
+  toleranz_m3:
+    name: Toleranz (m³)
+    description: >-
+      Kleine Rückwärts-Abweichungen bis zu diesem Wert werden still ignoriert,
+      z. B. wenn die letzte Rolle gerade dreht (Standard 0.002).
+  alle_ziffern_gelernt:
+    name: Erst schreiben, wenn alle Ziffern gelernt sind
+    description: >-
+      Solange für eine Ziffer 0–9 noch keine Vorlage existiert, wird nichts
+      geschrieben. Eine nie gelernte Ziffer könnte sonst als ähnliche erkannt
+      werden.
+  http:
+    name: HTTP im Heimnetz
+    description: >-
+      Lernseite und API unverschlüsselt im Heimnetz anbieten. Port unter
+      Netzwerk (Standard 8099). Ohne Passwort – nie im Router freigeben.
+  https:
+    name: HTTPS im Heimnetz
+    description: >-
+      Lernseite und API verschlüsselt im Heimnetz anbieten. Port unter Netzwerk
+      (Standard 8100). Ohne Passwort – nie im Router freigeben.
+  zertifikat:
+    name: HTTPS-Zertifikat
+    description: >-
+      Datei im Ordner /ssl (z. B. vom Let's-Encrypt-Add-on), Standard
+      fullchain.pem. Fehlt sie, erzeugt das Add-on ein selbstsigniertes
+      Zertifikat (der Browser warnt dann einmal).
+  schluessel:
+    name: HTTPS-Schlüssel
+    description: Datei im Ordner /ssl, Standard privkey.pem.
   lerneffekt:
     name: Lerneffekt
     description: >-
@@ -38,15 +89,15 @@ configuration:
   admin_nur_ueber_ingress:
     name: Verwaltung nur über Home Assistant
     description: >-
-      Die Verwaltung (Löschen, Import, Export) ist dann nur über die
-      Seitenleiste erreichbar, also nur für angemeldete Benutzer. Lernseite und
-      API bleiben im Heimnetz erreichbar.
+      Löschen, Import und Export nur über die Seitenleiste, also nur für
+      angemeldete Benutzer – auch wenn HTTP oder HTTPS an ist.
   log_level:
     name: Log-Level
     description: DEBUG zeigt zusätzlich übersprungene Duplikate.
 network:
-  8099/tcp: >-
-    API und Lernseite direkt im Heimnetz, ohne Passwort. Standardmäßig
-    geschlossen. Nur eintragen (z. B. 8099), wenn Geräte oder ein Node-RED
-    außerhalb von Home Assistant direkt zugreifen sollen. Ein Node-RED-Add-on
-    erreicht den Dienst auch so über den Hostnamen von der Info-Seite.
+  8080/tcp: >-
+    Port für HTTP im Heimnetz. Antwortet nur, wenn die Option „HTTP im
+    Heimnetz“ an ist. Leer lassen = Port ganz zu.
+  8443/tcp: >-
+    Port für HTTPS im Heimnetz. Antwortet nur, wenn die Option „HTTPS im
+    Heimnetz“ an ist. Leer lassen = Port ganz zu.

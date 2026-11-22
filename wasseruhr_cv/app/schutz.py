@@ -2,8 +2,8 @@
 
 - Ursprungsprüfung (CSRF): Ein Browser schickt bei POST immer einen Origin-Header.
   Stammt er von einer fremden Seite, wird abgelehnt – sonst könnte jede Webseite,
-  die man im Heimnetz besucht, dem Dienst falsche Werte beibringen. Clients ohne
-  Origin (Node-RED, curl) und Anfragen über den HA-Ingress bleiben erlaubt.
+  die man im Heimnetz besucht, dem Dienst falsche Werte beibringen. Programme ohne
+  Origin (curl, Skripte, Automationen) und Anfragen über den HA-Ingress bleiben erlaubt.
 - Größenlimit für Request-Bodies, damit niemand den Speicher füllen kann.
 - Sicherheits-Header für alle Antworten.
 """
@@ -36,7 +36,7 @@ def fremder_ursprung(request: Request) -> bool:
         return False
     origin = request.headers.get("origin")
     if origin is None:
-        return False  # kein Browser: Node-RED, curl, Home Assistant
+        return False  # kein Browser: curl, Skripte, Home Assistant
     try:
         herkunft = urlsplit(origin).netloc.lower()
     except ValueError:

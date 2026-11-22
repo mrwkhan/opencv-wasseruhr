@@ -2,7 +2,7 @@
 
 import os
 
-__version__ = "1.3.1"
+__version__ = "1.4.0"
 
 # Schutz vor Dekompressionsbomben: Ein JPEG von wenigen hundert Bytes kann
 # 30000x30000 Pixel behaupten und beim Dekodieren Gigabytes anfordern. OpenCV

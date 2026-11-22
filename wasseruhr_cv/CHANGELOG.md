@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.4.0
+
+- **Eigenständig:** Das Add-on liest die Kamera selbst in festen Abständen ab
+  (Option `intervall_minuten`), prüft den Wert (nur sicher, nur vorwärts,
+  höchstens `max_m3_pro_stunde`) und schreibt ihn in den Sensor
+  `sensor.wasseruhr_cv_zaehlerstand` (m³, Energie-Dashboard) und optional in
+  einen `input_number`-Helfer. Der Node-RED-Flow entfällt.
+- Verwaltung: Automatik-Status, „Jetzt ablesen & übertragen“, Zählerstand von
+  Hand setzen, Modell zurücksetzen.
+- **Initiales Modell** ist Teil des Add-ons und wird beim ersten Start
+  übernommen. Die Lernbilder zeigen nur das Zählwerk.
+- **Erreichbarkeit:** HTTP und HTTPS im Heimnetz einzeln schaltbar (Optionen
+  `http`, `https`), Ports unter Konfiguration → Netzwerk frei wählbar
+  (Standard 8099 bzw. 8100). HTTPS nutzt das Zertifikat aus `/ssl` oder ein
+  selbstsigniertes.
+
 ## 1.3.1
 
 Sicherheit:

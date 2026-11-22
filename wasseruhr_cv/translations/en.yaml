@@ -2,8 +2,54 @@ configuration:
   kamera:
     name: Camera
     description: >-
-      Camera entity used by "Kamera jetzt ablesen" (read camera now) on the
-      learning page and in the admin page. Leave empty if only Node-RED sends images.
+      Camera entity to read, e.g. camera.water_meter. Without a camera there is
+      no automatic reading.
+  intervall_minuten:
+    name: Interval (minutes)
+    description: How often the camera is read automatically. 0 turns automatic reading off.
+  sensor:
+    name: Sensor
+    description: >-
+      The add-on writes the checked meter reading here (m³, device class
+      water), also usable in the Energy dashboard. Empty = no sensor.
+  input_number:
+    name: Helper (input_number)
+    description: >-
+      Optional: additionally set an existing number helper, e.g.
+      input_number.water_meter. A value set there by hand counts as a
+      correction of the meter reading.
+  max_m3_pro_stunde:
+    name: Maximum increase (m³ per hour)
+    description: Faster increases are treated as reading errors and discarded (default 3).
+  toleranz_m3:
+    name: Tolerance (m³)
+    description: >-
+      Small backward deviations up to this value are silently ignored, e.g.
+      while the last wheel is turning (default 0.002).
+  alle_ziffern_gelernt:
+    name: Only write once all digits are learned
+    description: >-
+      Nothing is written while a digit 0–9 has no template yet; an unlearned
+      digit could otherwise be recognised as a similar one.
+  http:
+    name: HTTP in the local network
+    description: >-
+      Serve learning page and API unencrypted in the local network. Port under
+      Network (default 8099). No password – never forward it in your router.
+  https:
+    name: HTTPS in the local network
+    description: >-
+      Serve learning page and API encrypted in the local network. Port under
+      Network (default 8100). No password – never forward it in your router.
+  zertifikat:
+    name: HTTPS certificate
+    description: >-
+      File in /ssl (e.g. from the Let's Encrypt add-on), default fullchain.pem.
+      If missing, the add-on creates a self-signed certificate (the browser
+      warns once).
+  schluessel:
+    name: HTTPS key
+    description: File in /ssl, default privkey.pem.
   lerneffekt:
     name: Learning
     description: >-
@@ -30,15 +76,15 @@ configuration:
   admin_nur_ueber_ingress:
     name: Admin page via Home Assistant only
     description: >-
-      The admin page (delete, import, export) is then only reachable through
-      the sidebar, i.e. for logged-in users. Learning page and API stay
-      reachable in the local network.
+      Delete, import and export only through the sidebar, i.e. for logged-in
+      users – even if HTTP or HTTPS is on.
   log_level:
     name: Log level
     description: DEBUG additionally logs skipped duplicates.
 network:
-  8099/tcp: >-
-    API and learning page directly in the local network, without password.
-    Closed by default. Only set it (e.g. 8099) if devices or a Node-RED
-    outside Home Assistant need direct access. A Node-RED add-on reaches the
-    service anyway via the hostname shown on the Info page.
+  8080/tcp: >-
+    Port for HTTP in the local network. Only answers if the option "HTTP in
+    the local network" is on. Empty = port closed.
+  8443/tcp: >-
+    Port for HTTPS in the local network. Only answers if the option "HTTPS in
+    the local network" is on. Empty = port closed.

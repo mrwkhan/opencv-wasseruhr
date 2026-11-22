@@ -7,7 +7,8 @@ services:
     container_name: wasseruhr-cv
     restart: unless-stopped
     ports:
-      - "8099:8099"
+      - "8099:8099"           # Lernseite, Verwaltung, API (HTTP)
+      # - "8443:8443"         # nur mit HTTPS: "an"
     volumes:
       - ./data:/data          # lernbilder/ (alle Lernbilder) + vorlagen/<ziffer>/
     environment:
@@ -21,8 +22,16 @@ services:
       # LOG_LEVEL: "INFO"
       # ROIs je Rolle [x1, y1, x2, y2] (links -> rechts), siehe README "ROIs anpassen":
       # ROIS: "[[130,144,162,196],[173,144,205,196],[216,144,248,196],[260,144,292,196],[304,144,336,196],[347,144,379,196],[391,144,423,196],[435,144,467,196]]"
-      # "Kamera jetzt ablesen" über die Home-Assistant-API. Das Token gehört in
-      # eine .env-Datei neben dieser Datei (HA_TOKEN=...), nie hier hinein.
+      # Automatische Ablesung: Kamerabild aus Home Assistant holen, prüfen und den
+      # Zählerstand nach HA schreiben. Das Token gehört in eine .env-Datei neben
+      # dieser Datei (HA_TOKEN=...), nie hier hinein.
       # KAMERA: "camera.wasseruhr"
       # HA_URL: "http://homeassistant.local:8123/api"
       # HA_TOKEN: "${HA_TOKEN}"
+      # INTERVALL_MINUTEN: "5"
+      # SENSOR: "sensor.wasseruhr_cv_zaehlerstand"
+      # INPUT_NUMBER: "input_number.wasserzaehler"
+      # Zusätzlich HTTPS (Port 8443 oben unter ports freigeben, Zertifikat per Volume):
+      # HTTPS: "an"
+      # ZERTIFIKAT: "/ssl/fullchain.pem"
+      # SCHLUESSEL: "/ssl/privkey.pem"

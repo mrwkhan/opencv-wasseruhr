@@ -57,9 +57,9 @@ def test_fremde_webseite_kann_nichts_lernen(tmp_path, jpeg):
         assert c.get("/admin/info").json()["lernbilder"] == 0
 
 
-def test_eigene_seite_node_red_und_ingress_bleiben_erlaubt(tmp_path, jpeg):
+def test_eigene_seite_programme_und_ingress_bleiben_erlaubt(tmp_path, jpeg):
     with _client(tmp_path) as c:
-        # Node-RED/curl: kein Origin
+        # Programme wie curl: kein Origin
         assert c.post("/lernen?wert=506.388", content=jpeg, headers=JPEG).status_code == 200
         # Lernseite im Browser: Origin == Host
         gleich = {**JPEG, "Origin": "http://testserver"}

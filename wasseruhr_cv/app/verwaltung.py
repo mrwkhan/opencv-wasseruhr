@@ -23,7 +23,8 @@ from . import modell, schutz, verwaltungsseite
 from .erkennung import zerlege_wert
 from .konfig import NACHKOMMASTELLEN, Konfig
 from .lernbilder import LernbildArchiv
-from .vorlagen import VorlagenSpeicher
+from .vorlagen import ZIFFERN, VorlagenSpeicher
+from .automatik import Automatik
 
 AUSSCHNITT_RAND = 12  # px um das Zählwerk beim Vorschaubild
 
@@ -37,6 +38,7 @@ class Kontext:
     neu_aufbauen: Callable[[], int]  # nur mit lern_lock aufrufen
     ablesungen: Callable[[], list]  # Ablesungen im Speicher, neueste zuerst
     version: str
+    automatik: Automatik
 
 
 def verwaltung_erlaubt(konfig: Konfig, request: Request) -> bool:
@@ -103,8 +105,31 @@ def router(k: Kontext) -> APIRouter:
                 "VERSCHIEBUNG": konfig.verschiebung,
                 "ROIS": [list(roi) for roi in konfig.rois],
                 "ADMIN_NUR_INGRESS": konfig.admin_nur_ingress,
+                "HTTP": konfig.http,
+                "HTTPS": konfig.https,
             },
+            automatik=k.automatik.zustand(),
         )
+
+    # ---- Automatik -----------------------------------------------------------
+
+    @r.get("/automatik")
+    def automatik() -> dict:
+        return k.automatik.zustand()
+
+    @r.post("/automatik/jetzt")
+    def automatik_jetzt() -> dict:
+        """Sofort ablesen, prüfen und nach Home Assistant schreiben."""
+        if not (konfig.kamera and konfig.ha_token):
+            raise HTTPException(status_code=400, detail="Keine Kamera eingestellt oder kein Zugang zu Home Assistant")
+        k.automatik.durchlauf()
+        return k.automatik.zustand()
+
+    @r.post("/automatik/zaehlerstand")
+    def zaehlerstand_setzen(wert: str = Query(..., description="Richtiger Zählerstand in m³")) -> dict:
+        """Von Hand korrigieren, z. B. nach einem Zählertausch."""
+        k.automatik.zaehlerstand_setzen(wert_parsen(wert, konfig))
+        return k.automatik.zustand()
 
     @r.get("/ablesungen")
     def ablesungen() -> list[dict]:
@@ -169,6 +194,14 @@ def router(k: Kontext) -> APIRouter:
                 png = cv2.imencode(".png", bild)[1].tobytes()
                 ergebnis[ziffer].append({"name": name, "png": base64.b64encode(png).decode("ascii")})
         return ergebnis
+
+    @r.post("/zuruecksetzen")
+    def zuruecksetzen() -> dict:
+        """Alle Lernbilder und Vorlagen löschen, um ganz neu anzulernen."""
+        with k.lern_lock:
+            archiv.ersetzen({})
+            speicher.ersetzen({z: [] for z in ZIFFERN})
+            return _zustand(vorlagen_neu_aufgebaut=False)
 
     @r.post("/neu-aufbauen")
     def neu_aufbauen() -> dict:

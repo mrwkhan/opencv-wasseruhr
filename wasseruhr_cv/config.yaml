@@ -1,32 +1,47 @@
 name: Wasseruhr-CV
-version: "1.3.1"
+version: "1.4.0"
 slug: wasseruhr_cv
 description: >-
-  Liest eine Wasseruhr per OpenCV-Template-Matching ab (kein LLM, keine Cloud).
-  Mit Lernseite und Verwaltung zum Anlernen und Nachtrainieren.
+  Liest eine Wasseruhr per Kamera und OpenCV ab (kein LLM, keine Cloud) und
+  schreibt den Zählerstand nach Home Assistant. Mit Lernseite und Verwaltung.
 url: https://github.com/mrwkhan/opencv-wasseruhr
 arch:
   - aarch64
   - amd64
 
-# Lernseite + Verwaltung in der HA-Seitenleiste (nur für angemeldete Benutzer).
+# Lernseite + Verwaltung in der Seitenleiste (nur für angemeldete Benutzer).
 # Ingress nutzt den Standard-Port 8099; der Watchdog den HEALTHCHECK im Dockerfile.
 ingress: true
 panel_icon: mdi:water-pump
 panel_title: Wasseruhr
 
-# Für "Kamera jetzt ablesen": Kamerabild über die HA-API holen
+# Kamerabild holen und Zählerstand nach Home Assistant schreiben
 homeassistant_api: true
 
-# API und Lernseite direkt im Heimnetz – ohne Passwort, daher standardmäßig
-# geschlossen. Ein Node-RED-Add-on erreicht den Dienst intern über den
-# Hostnamen (Info-Seite), bedient wird über die Seitenleiste (Ingress).
+# Zertifikate für HTTPS (z. B. vom Let's-Encrypt- oder DuckDNS-Add-on), nur lesend
+map:
+  - ssl
+
+# Direkter Zugriff im Heimnetz. Die Port-Nummern sind unter Konfiguration →
+# Netzwerk frei wählbar (leer = Port zu); ob dort etwas antwortet, steuern die
+# Optionen http und https (beide standardmäßig aus).
 ports:
-  8099/tcp: null
+  8080/tcp: 8099
+  8443/tcp: 8100
 ports_description:
-  8099/tcp: API und Lernseite direkt im Heimnetz (ohne Passwort, standardmäßig aus)
+  8080/tcp: HTTP im Heimnetz (antwortet nur mit Option http)
+  8443/tcp: HTTPS im Heimnetz (antwortet nur mit Option https)
 
 options:
+  intervall_minuten: 5
+  sensor: sensor.wasseruhr_cv_zaehlerstand
+  max_m3_pro_stunde: 3
+  toleranz_m3: 0.002
+  alle_ziffern_gelernt: true
+  http: false
+  https: false
+  zertifikat: fullchain.pem
+  schluessel: privkey.pem
   lerneffekt: true
   min_score: 0.7
   min_abstand: 0.08
@@ -36,6 +51,16 @@ options:
   log_level: INFO
 schema:
   kamera: 'match(^camera\.[a-z0-9_]+$)?'
+  intervall_minuten: int(0,1440)
+  sensor: 'match(^sensor\.[a-z0-9_]+$)?'
+  input_number: 'match(^input_number\.[a-z0-9_]+$)?'
+  max_m3_pro_stunde: float(0,100)
+  toleranz_m3: float(0,1)
+  alle_ziffern_gelernt: bool
+  http: bool
+  https: bool
+  zertifikat: str
+  schluessel: str
   lerneffekt: bool
   min_score: float(0,1)
   min_abstand: float(0,1)

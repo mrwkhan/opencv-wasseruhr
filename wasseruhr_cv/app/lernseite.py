@@ -131,8 +131,12 @@ def rendern(
     ist_neueste: bool,
     kamera: bool = False,
     verwaltung: bool = True,
+    automatik_intervall: int | None = None,
+    zaehlerstand: float | None = None,
 ) -> str:
     chips = [
+        f"Zählerstand {zaehlerstand:.3f} m³" if zaehlerstand is not None else "noch kein Zählerstand",
+        f"Automatik alle {automatik_intervall} min" if automatik_intervall else "Automatik aus",
         f"Lerneffekt {'an' if lerneffekt else 'aus'}",
         f"{lernbilder} Lernbild{'er' if lernbilder != 1 else ''}",
         f"Ziffern ohne Vorlage: {', '.join(map(str, fehlende))}" if fehlende else "alle Ziffern 0–9 gelernt",
@@ -145,8 +149,10 @@ def rendern(
 
     if nr is None:
         hinweis = (
-            "Mit <b>Kamera jetzt ablesen</b> holt sich der Dienst selbst ein Bild." if kamera
-            else "Sobald Node-RED das nächste Kamerabild an <code>/ablesen</code> schickt, erscheint es hier."
+            f"Die Automatik liest gleich und danach alle {automatik_intervall} Minuten ab – "
+            "oder sofort mit <b>Kamera jetzt ablesen</b>." if automatik_intervall
+            else "Mit <b>Kamera jetzt ablesen</b> holt sich der Dienst selbst ein Bild." if kamera
+            else "Für die automatische Ablesung in der Konfiguration die Kamera eintragen."
         )
         inhalt = (
             f'<div class="karte"><p>Noch kein Bild abgelesen. {hinweis}</p>'

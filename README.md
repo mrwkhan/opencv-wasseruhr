@@ -4,17 +4,23 @@
 
 Liest das Rollenzählwerk einer Wasseruhr per **klassischem Computer Vision** ab:
 OpenCV Template Matching, kein LLM, keine Cloud. Der Dienst lernt die Ziffern
-aus Kamerabildern mit bekanntem Zählerstand und erkennt sie danach selbstständig.
+aus Kamerabildern mit bekanntem Zählerstand, erkennt sie danach selbstständig
+und schreibt den geprüften Zählerstand nach Home Assistant.
 
 Läuft als **Home-Assistant-Add-on** (z. B. auf dem Home Assistant Green) oder
-als eigenständiger Docker-Dienst.
+als eigenständiger Docker-Dienst – ohne weitere Werkzeuge.
 
-- Lernseite und Verwaltung in der Home-Assistant-Seitenleiste
-- Nachtrainieren jederzeit: falsch gelernte Bilder korrigieren oder löschen,
-  Vorlagen ansehen, Modell als ZIP sichern und übertragen
-- „Kamera jetzt ablesen“ direkt über die Home-Assistant-API
-- Einfache HTTP-API (`POST /ablesen` mit dem JPEG), fertiger
-  [Node-RED-Flow](node-red/) schreibt nur sichere und plausible Werte nach HA
+- **Automatische Ablesung:** holt alle paar Minuten das Kamerabild aus Home
+  Assistant und schreibt nur sichere, plausible Werte (nur vorwärts, höchstens
+  so schnell, wie Wasser fließen kann) in einen Sensor fürs Energie-Dashboard
+  und optional in einen `input_number`-Helfer
+- **Initiales Modell** eingebaut ([wasseruhr_cv/modell](wasseruhr_cv/modell)),
+  beim ersten Start sofort einsatzbereit
+- Lernseite und Verwaltung in der Home-Assistant-Seitenleiste: nachtrainieren,
+  falsch gelernte Bilder korrigieren oder löschen, Vorlagen ansehen, Modell
+  als ZIP sichern und übertragen
+- Im Heimnetz optional per **HTTP und/oder HTTPS** erreichbar, Ports frei wählbar
+- Einfache HTTP-API (`POST /ablesen` mit dem JPEG) für eigene Anbindungen
 
 ## Installation in Home Assistant
 
@@ -39,11 +45,16 @@ Unterstützt: `aarch64` (Home Assistant Green/Yellow, Raspberry Pi 4/5 mit
 2. **ROIs prüfen:** Lernseite → „Kamera jetzt ablesen“. Die eingezeichneten
    Rechtecke müssen auf den Ziffernfenstern liegen, sonst
    [ROIs anpassen](#rois-anpassen).
-3. **Anlernen:** Richtigen Zählerstand eintragen → „Mit diesem Bild lernen“.
-   Wiederholen, bis jede Ziffer 0–9 einmal gelernt ist. Ein vorhandenes Modell
-   lässt sich stattdessen in der Verwaltung als ZIP importieren.
-4. **Anbinden:** den [Node-RED-Flow](node-red/) importieren oder die
-   [API](#api) direkt nutzen.
+3. **Modell:** Das initiale Modell wird beim ersten Start übernommen. Für eine
+   andere Uhr in der Verwaltung „Modell zurücksetzen“ und auf der Lernseite
+   anlernen: richtigen Zählerstand eintragen → „Mit diesem Bild lernen“, bis
+   jede Ziffer 0–9 einmal gelernt ist.
+4. **Fertig:** Ab jetzt steht der Zählerstand alle 5 Minuten in
+   `sensor.wasseruhr_cv_zaehlerstand`. Fürs Energie-Dashboard: Einstellungen →
+   Dashboards → Energie → Wasserverbrauch → diesen Sensor auswählen.
+
+Details zur Automatik, zu HTTP/HTTPS und allen Optionen stehen in der
+[Add-on-Dokumentation](wasseruhr_cv/DOCS.md).
 
 ## Eigenständig mit Docker Compose
 
@@ -54,8 +65,10 @@ docker compose up -d --build
 curl http://localhost:8099/health        # -> {"ok":true}
 ```
 
-Lernseite: `http://<host>:8099/`, Verwaltung: `http://<host>:8099/admin`.
-Alle Daten liegen in `./data` und bleiben bei Neustarts und Updates erhalten:
+Lernseite: `http://<host>:8099/`, Verwaltung: `http://<host>:8099/admin`. Für
+die automatische Ablesung `KAMERA`, `HA_URL` und `HA_TOKEN` setzen (siehe
+[docker-compose.yml](docker-compose.yml)). Alle Daten liegen in `./data` und
+bleiben bei Neustarts und Updates erhalten:
 
 ```
 data/
@@ -74,14 +87,15 @@ docker compose logs -f
 Format pro Rolle: `r<rolle>=<ziffer>(<score>/<zweitbeste>:<score2>)`, ein `!`
 markiert eine unsichere Rolle.
 
-> **Sicherheit:** Der Dienst hat kein Passwort. Port 8099 nur im Heimnetz
+> **Sicherheit:** Der Dienst hat kein Passwort. Ports nur im Heimnetz
 > betreiben, nie im Router freigeben. Webseiten im Browser können ihm nichts
 > beibringen (Ursprungsprüfung), Bilder sind auf 10 MB und 25 Megapixel
-> begrenzt. Im Add-on ist der Port standardmäßig geschlossen.
+> begrenzt. Im Add-on sind HTTP und HTTPS im Heimnetz standardmäßig aus.
 
-> **Datenschutz:** Lernbilder zeigen die eigene Wasseruhr samt Zählerständen.
-> `data/` und Modell-Exporte (`*.zip`) sind deshalb per `.gitignore` vom
-> Repository ausgeschlossen. Nicht öffentlich teilen.
+> **Datenschutz:** Laufende Lernbilder zeigen die eigene Wasseruhr samt
+> Zählerständen. `data/` und Modell-Exporte (`*.zip`) sind deshalb per
+> `.gitignore` ausgeschlossen. Das mitgelieferte Modell zeigt nur das Zählwerk;
+> ein Test stellt sicher, dass das so bleibt.
 
 ## Lernbilder & Lerneffekt
 
@@ -149,13 +163,23 @@ Umgebungsvariablen:
 | `MIN_ABSTAND` | `min_abstand` | `0.08` | Mindestabstand zur zweitbesten Ziffer |
 | `MAX_VORLAGEN_PRO_ZIFFER` | `max_vorlagen_pro_ziffer` | `30` | ältere Vorlagen fallen heraus |
 | `VERSCHIEBUNG` | `verschiebung` | `3` | Suchbereich des Template Matchings in px (±) |
-| `KAMERA` | `kamera` | – | Kamera-Entität für [„Kamera jetzt ablesen“](#post-kamera-ablesen) |
+| `KAMERA` | `kamera` | – | Kamera-Entität, die abgelesen wird |
+| `INTERVALL_MINUTEN` | `intervall_minuten` | `5` | automatische Ablesung, `0` = aus (braucht `KAMERA` und HA-Zugang) |
+| `SENSOR` | `sensor` | `sensor.wasseruhr_cv_zaehlerstand` | Ziel für den Zählerstand, `-` = kein Sensor |
+| `INPUT_NUMBER` | `input_number` | – | optional zusätzlich ein Zahlen-Helfer |
+| `MAX_M3_PRO_STUNDE` | `max_m3_pro_stunde` | `3` | schnellerer Anstieg = Lesefehler |
+| `TOLERANZ_M3` | `toleranz_m3` | `0.002` | kleine Rückwärts-Abweichung ignorieren |
+| `ALLE_ZIFFERN_GELERNT` | `alle_ziffern_gelernt` | `an` | erst schreiben, wenn 0–9 gelernt sind |
+| `HTTP` / `HTTP_PORT` | `http` | `aus` / `8080` | zusätzlicher HTTP-Listener (Add-on: Port unter Netzwerk, Standard 8099) |
+| `HTTPS` / `HTTPS_PORT` | `https` | `aus` / `8443` | zusätzlicher HTTPS-Listener (Add-on: Port unter Netzwerk, Standard 8100) |
+| `ZERTIFIKAT` / `SCHLUESSEL` | `zertifikat` / `schluessel` | `fullchain.pem` / `privkey.pem` | relativ zu `SSL_VERZEICHNIS` (`/ssl`) oder absolut; fehlt es, wird ein selbstsigniertes erzeugt |
+| `PORT` | – | `8099` | Hauptport (Add-on: Ingress/intern, Docker: der freigegebene Port) |
 | `ADMIN_NUR_INGRESS` | `admin_nur_ueber_ingress` | Docker `aus`, Add-on `an` | Verwaltung nur über die HA-Seitenleiste |
 | `LOG_LEVEL` | `log_level` | `INFO` | `DEBUG` zeigt auch übersprungene Duplikate |
 | `HA_URL` | – | `http://supervisor/core/api` | REST-API von HA, für Docker z. B. `http://homeassistant.local:8123/api` |
 | `HA_TOKEN` | – | im Add-on automatisch | Langlebiges Zugriffstoken (Docker: in `.env`, nie ins Repository) |
 | `DATA_DIR` | – | `/data` | Datenverzeichnis mit `lernbilder/` und `vorlagen/` |
-| `MODELL_DIR` | – | `/opt/wasseruhr/modell` | Optionales eingebautes Modell, wird beim ersten Start in ein leeres `DATA_DIR` übernommen |
+| `MODELL_DIR` | – | `/opt/wasseruhr/modell` | Initiales Modell, wird beim ersten Start in ein leeres `DATA_DIR` übernommen |
 
 ## API
 
@@ -188,7 +212,7 @@ curl -X POST -H "Content-Type: image/jpeg" --data-binary @bild.jpg http://localh
   `score - score2 >= MIN_ABSTAND` gilt.
 - `fehlende_vorlagen`: Ziffern 0–9 ohne Vorlage. Solange die Liste nicht leer
   ist, kann eine nie gelernte Ziffer als ähnliche erkannt werden (z. B. 4 als 8).
-  Auswertungen sollten das prüfen. Der Node-RED-Flow tut es.
+  Eigene Auswertungen sollten das prüfen; die eingebaute Automatik tut es.
 
 ### `POST /lernen?wert=506.388`
 
@@ -251,7 +275,7 @@ Home-Assistant-Supervisors (Ingress), alle anderen bekommen `403`.
 
 Antwort jeweils als `{"detail": "<Beschreibung>"}`. Schreibende Anfragen mit
 einem `Origin`-Header werden nur angenommen, wenn er zum `Host` passt.
-Programme wie Node-RED oder curl senden keinen `Origin` und sind nicht betroffen.
+Programme wie curl senden keinen `Origin` und sind nicht betroffen.
 
 ## So funktioniert die Erkennung
 
@@ -275,7 +299,7 @@ DATA_DIR=./data .venv/bin/python wasseruhr_cv/start.py     # lokal auf Port 8099
 ```
 repository.yaml          macht das Repository zum Home-Assistant-Add-on-Repository
 wasseruhr_cv/            das Add-on (Build-Kontext für HA und Docker Compose)
-  config.yaml            Add-on-Definition: Optionen, Ingress, Port
+  config.yaml            Add-on-Definition: Optionen, Ingress, Ports
   Dockerfile, start.py   Image und Start (Optionen -> Umgebungsvariablen)
   DOCS.md, CHANGELOG.md  im Add-on angezeigte Dokumentation
   app/                   der Dienst (FastAPI + OpenCV)
@@ -284,10 +308,13 @@ wasseruhr_cv/            das Add-on (Build-Kontext für HA und Docker Compose)
     lernbilder.py        Archiv aller Lernbilder
     modell.py            Modell-Export/-Import (ZIP)
     verwaltung.py        /admin, verwaltungsseite.py ihr HTML
-    lernseite.py         Lernseite, debugbild.py /debug.png, kamera.py HA-Kamera
+    lernseite.py         Lernseite, debugbild.py /debug.png
+    automatik.py         Ablesen im Intervall, Plausibilität, nach HA schreiben
+    ha.py, kamera.py     REST-API von Home Assistant (Zustände, Dienste, Kamera)
+    schutz.py            Ursprungsprüfung, Größenlimits, Sicherheits-Header
+    server.py            Hauptport + optional HTTP/HTTPS in einem Prozess
     main.py              Endpunkte, Logging
-  modell/                optionales eingebautes Modell (im Repository leer)
-node-red/                Flow + Anleitung für Node-RED
+  modell/                initiales Modell: lernbilder/ (nur Zählwerk, PNG), vorlagen/
 tests/                   pytest; Testbilder bis auf das Zählwerk geschwärzt
 docker-compose.yml       eigenständiger Betrieb
 ```

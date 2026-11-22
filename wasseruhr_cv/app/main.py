@@ -16,6 +16,7 @@ from fastapi.responses import HTMLResponse, Response
 from starlette.concurrency import run_in_threadpool
 
 from . import __version__, debugbild, kamera, lernseite, modell, schutz, verwaltung
+from .automatik import Automatik
 from .erkennung import (
     BildFehler,
     ZiffernErgebnis,
@@ -114,7 +115,9 @@ def create_app(konfig: Konfig | None = None) -> FastAPI:
             "nur über HA-Ingress" if konfig.admin_nur_ingress else "im ganzen Netz",
         )
         _vorlagen_bereitstellen()
+        automatik.starten()
         yield
+        automatik.stoppen()
 
     app = FastAPI(title="Wasseruhr-CV", version=__version__, lifespan=lifespan)
     schutz.einrichten(app)
@@ -169,6 +172,10 @@ def create_app(konfig: Konfig | None = None) -> FastAPI:
             "ziffern": [e.als_dict() for e in ergebnisse],
             "fehlende_vorlagen": fehlende,
         }
+
+    # Liest selbst in festen Abständen ab und schreibt nach Home Assistant (siehe automatik.py)
+    automatik = Automatik(konfig, lambda daten: _ablesen_mit_nr(daten))
+    app.state.automatik = automatik
 
     @app.post("/ablesen")
     async def ablesen(request: Request) -> dict:
@@ -253,6 +260,7 @@ def create_app(konfig: Konfig | None = None) -> FastAPI:
             "fehlende_vorlagen": speicher.fehlende_ziffern(),
             "lerneffekt": konfig.lerneffekt,
             "lernbilder": archiv.anzahl(),
+            "zaehlerstand": automatik.zustand()["zaehlerstand"],
         }
 
     @app.get("/debug.png")
@@ -287,6 +295,8 @@ def create_app(konfig: Konfig | None = None) -> FastAPI:
                 sicher=a.sicher if a else False,
                 ist_neueste=a is neueste,
                 kamera=bool(konfig.kamera and konfig.ha_token),
+                automatik_intervall=konfig.intervall_minuten if automatik.aktiv else None,
+                zaehlerstand=automatik.zustand()["zaehlerstand"],
                 verwaltung=verwaltung.verwaltung_erlaubt(konfig, request),
             ),
             headers={"Cache-Control": "no-store"},
@@ -312,6 +322,7 @@ def create_app(konfig: Konfig | None = None) -> FastAPI:
                 neu_aufbauen=_neu_aufbauen,
                 ablesungen=_ablesungen,
                 version=__version__,
+                automatik=automatik,
             )
         )
     )

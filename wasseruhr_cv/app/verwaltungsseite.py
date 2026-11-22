@@ -109,13 +109,56 @@ async function ladeInfo() {
     ["Verschiebung", `±${s.VERSCHIEBUNG} px`],
     ["Kamera", info.kamera || "–"],
     ["Verwaltung", s.ADMIN_NUR_INGRESS ? "nur über Home Assistant" : "im ganzen Heimnetz"],
+    ["HTTP im Heimnetz", s.HTTP ? "an" : "aus"],
+    ["HTTPS im Heimnetz", s.HTTPS ? "an" : "aus"],
     ["ROIs", el("code", {text: JSON.stringify(s.ROIS)})],
   ];
+  zeigeAutomatik(info.automatik);
   $("#einstellungen").replaceChildren(...zeilen.flatMap(([k, v]) => [el("dt", {text: k}), el("dd", {}, typeof v === "object" ? v : String(v))]));
   $("#einstellungen-hinweis").textContent = info.addon
     ? "Ändern unter Einstellungen → Add-ons → Wasseruhr-CV → Konfiguration. Beim Speichern startet das Add-on neu."
     : "Ändern über die Umgebungsvariablen in docker-compose.yml, danach docker compose up -d.";
 }
+
+// ---- Automatik ----------------------------------------------------------------
+function zeigeAutomatik(a) {
+  const l = a.letzter;
+  const ziele = [a.sensor, a.input_number].filter(Boolean).join(", ") || "keine – nur Anzeige hier";
+  const zeilen = [
+    ["Status", a.aktiv ? `liest alle ${a.intervall_minuten} min ab` : (a.intervall_minuten === 0 ? "aus (Intervall 0)" : "aus – Kamera in der Konfiguration eintragen")],
+    ["Kamera", a.kamera || "–"],
+    ["Schreibt nach", ziele],
+    ["Zählerstand", a.zaehlerstand == null ? "noch keiner" : `${m3(a.zaehlerstand)} m³ (bestätigt ${zeit(a.zaehlerstand_zeit)})`],
+    ["Letzte Prüfung", l ? `${zeit(l.zeit)}: ${l.status}${l.grund ? " – " + l.grund : ""}` : "seit dem Start noch keine"],
+  ];
+  if (l && l.uebertragen && l.uebertragen !== "ok") zeilen.push(["Übertragen", "fehlgeschlagen: " + l.uebertragen]);
+  $("#automatik").replaceChildren(...zeilen.flatMap(([k, v]) => [el("dt", {text: k}), el("dd", {text: v})]));
+  $("#jetzt").hidden = !a.kamera;
+}
+$("#jetzt").addEventListener("click", async (ev) => {
+  const knopf = ev.currentTarget;
+  knopf.disabled = true; melden("m-automatik", "Lese ab und prüfe …");
+  try {
+    const a = await api("admin/automatik/jetzt", {method: "POST"});
+    const l = a.letzter;
+    melden("m-automatik", `${l.status}${l.grund ? " – " + l.grund : ""}`, l.status === "fehler" || l.status === "verworfen" ? "schlecht" : "gut");
+    await Promise.all([ladeInfo(), ladeAblesungen()]);
+  } catch (e) { melden("m-automatik", "Fehler: " + e.message, "schlecht"); }
+  knopf.disabled = false;
+});
+$("#zaehlerstand").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const f = ev.currentTarget, knopf = f.querySelector("button");
+  if (!WERT_MUSTER.test(f.wert.value.trim())) { melden("m-automatik", "Bitte im Format 506.388 eingeben.", "schlecht"); return; }
+  if (!bestaetigt(knopf, "Wirklich setzen?")) return;
+  knopf.disabled = true;
+  try {
+    await api(`admin/automatik/zaehlerstand?wert=${encodeURIComponent(punkt(f.wert.value))}`, {method: "POST"});
+    melden("m-automatik", `Zählerstand auf ${m3(punkt(f.wert.value))} m³ gesetzt.`, "gut"); f.reset();
+    await ladeInfo();
+  } catch (e) { melden("m-automatik", "Fehler: " + e.message, "schlecht"); }
+  knopf.disabled = false;
+});
 
 // ---- Letzte Ablesungen --------------------------------------------------------
 async function ladeAblesungen() {
@@ -260,6 +303,18 @@ $("#import").addEventListener("submit", async (ev) => {
   knopf.disabled = false;
 });
 
+$("#zuruecksetzen").addEventListener("click", async (ev) => {
+  const knopf = ev.currentTarget;
+  if (!bestaetigt(knopf, "Wirklich ALLE Lernbilder und Vorlagen löschen?")) return;
+  knopf.disabled = true;
+  try {
+    await api("admin/zuruecksetzen", {method: "POST"});
+    melden("m-import", "Modell gelöscht – jetzt auf der Lernseite neu anlernen oder ein ZIP importieren.", "gut");
+    await allesLaden();
+  } catch (e) { melden("m-import", "Fehler: " + e.message, "schlecht"); }
+  knopf.disabled = false;
+});
+
 allesLaden().catch(e => melden("m-laden", "Fehler beim Laden: " + e.message, "schlecht"));
 </script>"""
 
@@ -285,6 +340,20 @@ _HTML = """<!doctype html>
       einmal gelernt ist. Sitzt die Kamera anders als beim Standard, zuerst die ROIs einstellen.</p>
     <div class="zeile"><a class="knopf" href="#import-karte">Modell importieren</a>
       <a class="knopf zweit" href="./">Zur Lernseite</a></div>
+  </section>
+
+  <section class="karte">
+    <h2>Automatik</h2>
+    <p class="leise">Liest das Kamerabild regelmäßig ab und schreibt nur sichere, plausible Werte nach
+      Home Assistant: nur vorwärts, höchstens so schnell, wie Wasser fließen kann.</p>
+    <dl class="einstellungen" id="automatik"></dl>
+    <div class="zeile"><button type="button" id="jetzt" hidden>Jetzt ablesen &amp; übertragen</button></div>
+    <form id="zaehlerstand" autocomplete="off">
+      <label>Zählerstand von Hand setzen, z. B. nach einem Zählertausch oder wenn dauerhaft „kleiner als der bisherige Stand“ gemeldet wird</label>
+      <input name="wert" inputmode="decimal" placeholder="506.388" aria-label="Zählerstand in m³">
+      <button type="submit" class="zweit">Setzen</button>
+    </form>
+    <div id="m-automatik" class="meldung"></div>
   </section>
 
   <section class="karte">
@@ -341,6 +410,7 @@ _HTML = """<!doctype html>
       </select>
       <button type="submit">Importieren</button>
     </form>
+    <div class="zeile"><button type="button" id="zuruecksetzen" class="zweit">Modell zurücksetzen (alles löschen)</button></div>
     <div id="m-import" class="meldung"></div>
   </section>
 

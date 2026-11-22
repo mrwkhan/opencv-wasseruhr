@@ -28,8 +28,9 @@ COPY start.py .
 # importiert oder auf der Lernseite angelernt.
 COPY modell ./modell
 
-EXPOSE 8099
+# 8099: Ingress/intern (immer), 8080: HTTP und 8443: HTTPS fürs Heimnetz (optional)
+EXPOSE 8099 8080 8443
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
-    CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8099/health', timeout=4).status == 200 else 1)"
+    CMD python -c "import os,sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:%s/health' % os.environ.get('PORT', '8099'), timeout=4).status == 200 else 1)"
 
 CMD ["python", "start.py"]

@@ -47,6 +47,25 @@ class Konfig:
     admin_nur_ingress: bool = False
     ist_addon: bool = False
 
+    # Automatik: Kamerabild alle N Minuten ablesen und nach Home Assistant schreiben
+    intervall_minuten: int = 5  # 0 = keine automatische Ablesung
+    sensor: str | None = "sensor.wasseruhr_cv_zaehlerstand"
+    input_number: str | None = None
+    max_m3_pro_stunde: float = 3.0  # schnellerer Anstieg = Lesefehler
+    toleranz_m3: float = 0.002  # kleine Rückwärts-Abweichung still ignorieren
+    alle_ziffern_gelernt: bool = True  # erst schreiben, wenn 0–9 alle gelernt sind
+
+    # Erreichbarkeit: Port 8099 dient immer Ingress & internem Netz (im Add-on
+    # nicht nach außen freigegeben). Zusätzlich optional HTTP und HTTPS fürs Heimnetz.
+    port: int = 8099
+    http: bool = False
+    http_port: int = 8080
+    https: bool = False
+    https_port: int = 8443
+    zertifikat: str = "fullchain.pem"  # relativ zu ssl_verzeichnis oder absolut
+    schluessel: str = "privkey.pem"
+    ssl_verzeichnis: Path = Path("/ssl")
+
     @property
     def vorlagen_verzeichnis(self) -> Path:
         return self.daten_verzeichnis / "vorlagen"
@@ -76,6 +95,20 @@ class Konfig:
             ha_token=(env.get("HA_TOKEN") or env.get("SUPERVISOR_TOKEN") or "").strip() or None,
             admin_nur_ingress=_parse_schalter(env, "ADMIN_NUR_INGRESS", False),
             ist_addon=bool((env.get("SUPERVISOR_TOKEN") or "").strip()),
+            intervall_minuten=_parse_zahl(env, "INTERVALL_MINUTEN", 5, int),
+            sensor=_entitaet(env, "SENSOR", "sensor.wasseruhr_cv_zaehlerstand"),
+            input_number=_entitaet(env, "INPUT_NUMBER", None),
+            max_m3_pro_stunde=_parse_zahl(env, "MAX_M3_PRO_STUNDE", 3.0, float),
+            toleranz_m3=_parse_zahl(env, "TOLERANZ_M3", 0.002, float),
+            alle_ziffern_gelernt=_parse_schalter(env, "ALLE_ZIFFERN_GELERNT", True),
+            port=_parse_zahl(env, "PORT", 8099, int),
+            http=_parse_schalter(env, "HTTP", False),
+            http_port=_parse_zahl(env, "HTTP_PORT", 8080, int),
+            https=_parse_schalter(env, "HTTPS", False),
+            https_port=_parse_zahl(env, "HTTPS_PORT", 8443, int),
+            zertifikat=(env.get("ZERTIFIKAT") or "").strip() or "fullchain.pem",
+            schluessel=(env.get("SCHLUESSEL") or "").strip() or "privkey.pem",
+            ssl_verzeichnis=Path((env.get("SSL_VERZEICHNIS") or "").strip() or "/ssl"),
         )
         if konfig.max_vorlagen_pro_ziffer < 1:
             raise KonfigFehler("MAX_VORLAGEN_PRO_ZIFFER muss >= 1 sein")
@@ -83,7 +116,26 @@ class Konfig:
             raise KonfigFehler("VERSCHIEBUNG muss zwischen 0 und 10 liegen")
         if konfig.kamera and not _KAMERA.fullmatch(konfig.kamera):
             raise KonfigFehler(f"KAMERA={konfig.kamera!r}: erwartet eine Entität wie camera.wasseruhr")
+        if konfig.sensor and not konfig.sensor.startswith("sensor."):
+            raise KonfigFehler(f"SENSOR={konfig.sensor!r}: erwartet eine Entität wie sensor.wasserzaehler")
+        if konfig.input_number and not konfig.input_number.startswith("input_number."):
+            raise KonfigFehler(f"INPUT_NUMBER={konfig.input_number!r}: erwartet eine Entität wie input_number.wasserzaehler")
+        if not 0 <= konfig.intervall_minuten <= 1440:
+            raise KonfigFehler("INTERVALL_MINUTEN muss zwischen 0 und 1440 liegen")
+        if konfig.max_m3_pro_stunde <= 0 or konfig.toleranz_m3 < 0:
+            raise KonfigFehler("MAX_M3_PRO_STUNDE muss > 0 und TOLERANZ_M3 >= 0 sein")
+        ports = [konfig.port] + [p for p, an in ((konfig.http_port, konfig.http), (konfig.https_port, konfig.https)) if an]
+        if any(not 1 <= p <= 65535 for p in ports) or len(set(ports)) != len(ports):
+            raise KonfigFehler(f"Ports müssen zwischen 1 und 65535 liegen und verschieden sein: {ports}")
         return konfig
+
+    @property
+    def automatik_moeglich(self) -> bool:
+        return self.intervall_minuten > 0 and bool(self.kamera) and bool(self.ha_token)
+
+    def ssl_pfad(self, name: str) -> Path:
+        pfad = Path(name)
+        return pfad if pfad.is_absolute() else self.ssl_verzeichnis / pfad
 
 
 def _parse_zahl(env: dict[str, str], name: str, standard, typ):
@@ -97,6 +149,20 @@ def _parse_zahl(env: dict[str, str], name: str, standard, typ):
 
 
 _KAMERA = re.compile(r"camera\.[a-z0-9_]+")
+_ENTITAET = re.compile(r"[a-z_]+\.[a-z0-9_]+")
+
+
+def _entitaet(env: dict[str, str], name: str, standard: str | None) -> str | None:
+    """Leer = Standard; '-' oder 'aus' = bewusst keine Entität."""
+    roh = env.get(name)
+    if roh is None:
+        return standard
+    roh = roh.strip()
+    if roh.lower() in ("", "-", "aus", "none"):
+        return None if roh else standard
+    if not _ENTITAET.fullmatch(roh):
+        raise KonfigFehler(f"{name}={roh!r} ist keine gültige Entität")
+    return roh
 
 _AN = {"an", "ein", "ja", "1", "true", "on", "yes"}
 _AUS = {"aus", "nein", "0", "false", "off", "no"}

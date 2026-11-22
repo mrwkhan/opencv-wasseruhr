@@ -337,7 +337,7 @@ def test_admin_nur_ueber_ingress(tmp_path, jpeg):
         assert heimnetz.get("/admin/export.zip").status_code == 403
         assert heimnetz.post("/admin/import?modus=ersetzen", content=b"x").status_code == 403
         assert "Seitenleiste" in heimnetz.get("/admin/info").json()["detail"]
-        # API und Lernseite bleiben für Node-RED & Handy erreichbar, nur ohne Verwaltungs-Reiter
+        # API und Lernseite bleiben im Heimnetz erreichbar, nur ohne Verwaltungs-Reiter
         assert heimnetz.post(f"/lernen?wert={BEISPIEL_WERT}", content=jpeg, headers=JPEG).status_code == 200
         assert heimnetz.post("/ablesen", content=jpeg, headers=JPEG).json()["sicher"] is True
         assert 'href="admin"' not in heimnetz.get("/").text
