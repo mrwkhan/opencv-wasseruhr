@@ -91,6 +91,7 @@ class Automatik:
         self._stand, self._stand_zeit = self._laden()
         self._letzter: dict | None = None
         self._helfer_fehlt: bool | None = None  # None = noch nicht geprüft / HA nicht erreichbar
+        self._helfer_wert: float | None = None  # zuletzt gelesener Wert des Helfers
         self.regeln = Regeln(
             konfig.max_m3_pro_stunde, konfig.toleranz_m3, konfig.alle_ziffern_gelernt,
             konfig.min_score, konfig.min_abstand,
@@ -176,7 +177,9 @@ class Automatik:
             try:
                 z = ha.zustand(self.konfig.ha_url, self.konfig.ha_token, self.konfig.input_number)
                 self._helfer_fehlt = z is None
+                self._helfer_wert = None
                 wert = float(z["state"]) if z else None
+                self._helfer_wert = wert
             except (ha.HAFehler, ValueError, KeyError, TypeError) as e:
                 log.warning("Automatik: %s nicht lesbar (%s) – nutze gespeicherten Stand", self.konfig.input_number, e)
             if wert is not None and wert > 0 and (self._stand is None or round(wert - self._stand, 3) != 0):
@@ -257,10 +260,14 @@ class Automatik:
                 if not vorher:  # nur beim ersten Erkennen ins Protokoll, nicht alle 5 Minuten
                     log.warning("Automatik: %s", meldung)
                 return "; ".join([*fehler, meldung])
-            if status in (UEBERNOMMEN, GESETZT):
+            # Neuer Stand – oder der Helfer hinkt hinterher (z. B. noch der Wert eines früheren
+            # Werkzeugs) und wurde nicht von Hand korrigiert (das hätte _basis übernommen).
+            abweichend = self._helfer_wert is None or round(self._helfer_wert - self._stand, 3) != 0
+            if status in (UEBERNOMMEN, GESETZT) or abweichend:
                 try:
                     ha.dienst(k.ha_url, k.ha_token, "input_number", "set_value",
                               {"entity_id": k.input_number, "value": self._stand})
+                    self._helfer_wert = self._stand
                 except ha.HAFehler as e:
                     fehler.append(f"{k.input_number}: {e}")
         for f in fehler:

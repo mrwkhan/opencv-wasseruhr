@@ -226,8 +226,9 @@ def test_korrektur_ueber_helfer_und_von_hand(tmp_path, ha):
         assert c.post("/admin/automatik/zaehlerstand?wert=abc").status_code == 400
 
 
-def test_alter_helferwert_ist_keine_korrektur(tmp_path, ha):
-    """Schlägt das Schreiben in den Helfer dauerhaft fehl, darf sein alter Wert den Stand nicht zurücksetzen."""
+def test_alter_helferwert_ist_keine_korrektur_und_wird_angeglichen(tmp_path, ha):
+    """Ein alter Wert im Helfer (z. B. von einem früheren Werkzeug) setzt den Stand nicht zurück –
+    der Helfer wird stattdessen auf den bestätigten Stand gebracht, auch wenn sich nichts ändert."""
     with _client(tmp_path, ha) as c:
         ha.bild = LERNBILD["510.406"].read_bytes()
         _jetzt(c)
@@ -235,6 +236,24 @@ def test_alter_helferwert_ist_keine_korrektur(tmp_path, ha):
         UHR[0] += timedelta(minutes=5)
         a = _jetzt(c)
         assert a["letzter"]["status"] == UNVERAENDERT and a["zaehlerstand"] == 510.406
+        assert ha.zustaende["input_number.wasserzaehler"]["state"] == "510.406"
+        anzahl = len(ha.dienste)
+        UHR[0] += timedelta(minutes=5)
+        _jetzt(c)  # Helfer stimmt jetzt -> nicht erneut schreiben
+        assert len(ha.dienste) == anzahl
+
+
+def test_helfer_nach_neustart_angeglichen(tmp_path, ha):
+    """Wie bei der Umstellung: Stand liegt schon vor, Helfer steht noch auf einem älteren Wert."""
+    ha.bild = LERNBILD["510.406"].read_bytes()
+    with _client(tmp_path, ha, input_number=None) as c:  # erst nur Sensor
+        _jetzt(c)
+    ha.zustaende["input_number.wasserzaehler"] = {"state": "510.390", "last_changed": (T0 - timedelta(hours=3)).isoformat()}
+    UHR[0] += timedelta(minutes=5)
+    with _client(tmp_path, ha) as c:  # Helfer in der Konfiguration ergänzt, Neustart
+        a = _jetzt(c)
+        assert a["letzter"]["status"] == UNVERAENDERT and a["letzter"]["uebertragen"] == "ok"
+    assert ha.zustaende["input_number.wasserzaehler"]["state"] == "510.406"
 
 
 def test_stand_ueberlebt_neustart(tmp_path, ha):

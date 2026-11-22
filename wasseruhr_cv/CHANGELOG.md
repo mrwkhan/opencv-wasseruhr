@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4.3
+
+- Der `input_number`-Helfer wird auch dann auf den bestätigten Zählerstand
+  gebracht, wenn sich der Wert nicht ändert – z. B. wenn er nach der Umstellung
+  noch den Wert eines früheren Werkzeugs enthält. Vorher hinkte er bis zum
+  nächsten neuen Wert hinterher. Eine Korrektur von Hand im Helfer wird
+  weiterhin übernommen.
+
 ## 1.4.2
 
 - **Kamera auswählen** in der Verwaltung: Liste aller Kameras aus Home
